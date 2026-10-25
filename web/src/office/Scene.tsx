@@ -71,6 +71,19 @@ function IslandSigns({ plan, floor }: { plan: FloorPlan; floor: FloorConfig }) {
   );
 }
 
+/** 회의 중이면 회의실 위에 안건 표지판 (누르면 회의 보기) */
+function MeetingSign({ floor }: { floor: FloorConfig }) {
+  const m = useOffice(s => s.meetings.find(x => x.floor === floor.floor && ['research', 'debate', 'minutes'].includes(x.status)));
+  const openPanel = useOffice(s => s.openPanel);
+  if (!m) return null;
+  const stage = m.status === 'research' ? '조사' : m.status === 'debate' ? '토론' : '정리';
+  return (
+    <Html position={[12.6, 2.1, 5.1]} center zIndexRange={[16, 10]}>
+      <div className="meeting-sign" onClick={() => openPanel({ meetingId: m.id })}>🗣️ 회의 중 · {stage}<b>{m.title}</b></div>
+    </Html>
+  );
+}
+
 function Workers({ plan, floor }: { plan: FloorPlan; floor: FloorConfig }) {
   const workers = useOffice(s => s.workers);
   const departing = useOffice(s => s.departing);
@@ -155,6 +168,7 @@ export function OfficeScene({ floor, zoomKey }: { floor: FloorConfig; zoomKey: n
       <Suspense fallback={null}>
         <FloorStatic plan={plan} />
         <IslandSigns plan={plan} floor={floor} />
+        <MeetingSign floor={floor} />
         <Workers plan={plan} floor={floor} />
       </Suspense>
       <Ticker />

@@ -2,13 +2,14 @@
 import { create } from 'zustand';
 import type { FloorConfig } from '../../shared/src/config.ts';
 import type { FloorSummary, OfficeEvent, ServerMessage, Worker } from '../../shared/src/events.ts';
+import type { Meeting, MeetingLine, MorningStatus } from '../../shared/src/meetings.ts';
 import type { Approval, Task, TerminalApprovalMode } from '../../shared/src/tasks.ts';
 import { initKey } from './api.ts';
 
 const MAX_EVENTS = 300;
 
 /** 오른쪽에 겹쳐 여는 창 */
-export type Panel = null | 'approvals' | 'command' | 'chat' | { taskId: number };
+export type Panel = null | 'approvals' | 'command' | 'chat' | 'meetings' | { taskId: number } | { meetingId: number };
 
 interface OfficeStore {
   floorsConfig: FloorConfig[];
@@ -22,6 +23,10 @@ interface OfficeStore {
   tasks: Task[];
   approvals: Approval[];
   terminalMode: TerminalApprovalMode;
+  meetings: Meeting[];
+  morning: MorningStatus | null;
+  /** 열어 본 회의의 발언 (회의 상세를 열 때 읽고, 이후엔 실시간으로 붙는다) */
+  meetingLines: Record<number, MeetingLine[]>;
   selectedFloor: number;
   selectedWorkerId: string | null;
   panel: Panel;
@@ -49,6 +54,9 @@ export const useOffice = create<OfficeStore>()(set => ({
   tasks: [],
   approvals: [],
   terminalMode: 'terminal',
+  meetings: [],
+  morning: null,
+  meetingLines: {},
   selectedFloor: 1,
   selectedWorkerId: null,
   panel: null,
@@ -112,6 +120,18 @@ function handle(msg: ServerMessage) {
         tasks: msg.tasks,
         approvals: msg.approvals,
         terminalMode: msg.terminalMode,
+        meetings: msg.meetings,
+        morning: msg.morning,
+      });
+      break;
+    case 'meetings':
+      useOffice.setState({ meetings: msg.meetings, morning: msg.morning });
+      break;
+    case 'meeting.line':
+      useOffice.setState(s => {
+        const have = s.meetingLines[msg.line.meetingId];
+        if (!have || have.some(l => l.id === msg.line.id)) return {};
+        return { meetingLines: { ...s.meetingLines, [msg.line.meetingId]: [...have, msg.line] } };
       });
       break;
     case 'event':

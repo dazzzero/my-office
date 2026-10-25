@@ -1,7 +1,7 @@
 import { copyFileSync, existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { FloorConfig, MyOfficeConfig, TeamConfig } from '../../shared/src/config.ts';
+import type { FloorConfig, MorningConfig, MyOfficeConfig, TeamConfig } from '../../shared/src/config.ts';
 
 export const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 export const DATA_DIR = join(ROOT, 'data');
@@ -16,7 +16,21 @@ export function loadConfig(path = CONFIG_FILE): MyOfficeConfig {
     copyFileSync(EXAMPLE_CONFIG_FILE, path);
     console.log('ℹ️  myoffice.config.json이 없어서 예시 설정으로 만들었습니다. 내 프로젝트 경로로 고쳐 쓰세요.');
   }
-  return JSON.parse(readFileSync(path, 'utf8')) as MyOfficeConfig;
+  const config = JSON.parse(readFileSync(path, 'utf8')) as MyOfficeConfig;
+  // 예전 설정 파일에 없는 항목은 기본값으로
+  const m = (config.meetings ??= {} as MyOfficeConfig['meetings']);
+  m.maxAttendees ??= 4;
+  m.defaultRounds ??= 2;
+  const morning: Partial<MorningConfig> = m.morning ?? {};
+  const time = morning.time ?? '09:00';
+  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) console.warn(`⚠️  meetings.morning.time "${time}"은 HH:MM(00:00~23:59) 형식이 아니라서 09:00으로 씁니다.`);
+  m.morning = {
+    enabled: morning.enabled ?? true,
+    time: /^([01]\d|2[0-3]):[0-5]\d$/.test(time) ? time : '09:00',
+    weekdays: (morning.weekdays ?? [1, 2, 3, 4, 5]).filter(d => Number.isInteger(d) && d >= 0 && d <= 6),
+    floors: morning.floors ?? config.floors.map(f => f.floor),
+  };
+  return config;
 }
 
 /** 경로 비교용 정규화: 소문자, 역슬래시, 끝 구분자 제거. Git Bash 형식(/c/dev)도 c:\dev로 바꾼다 */

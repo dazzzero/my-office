@@ -222,6 +222,23 @@ test('비정상 종료 → failed, 서버 재시작 → 진행 중이던 업무�
   assert.equal(again.get(t2.id).status, 'stopped');
 });
 
+test('계획 모두 승인: 기다리는 계획 결재만 한꺼번에 승인 (작업 결재는 그대로)', async () => {
+  const { tm, procs } = setup();
+  tm.create({ instruction: 'a', teamId: 'shop-fe' });
+  tm.create({ instruction: 'b', teamId: 'shop-be' });
+  const c = tm.create({ instruction: 'c', teamId: 'erp-fe' });
+  await tick();
+  procs[0].emit({ type: 'control_request', request_id: 'p1', request: { subtype: 'can_use_tool', tool_name: 'ExitPlanMode', input: { plan: 'x' } } });
+  procs[1].emit({ type: 'control_request', request_id: 'p2', request: { subtype: 'can_use_tool', tool_name: 'ExitPlanMode', input: { plan: 'y' } } });
+  procs[2].emit({ type: 'control_request', request_id: 't1', request: { subtype: 'can_use_tool', tool_name: 'Bash', input: { command: 'git push' } } });
+  await tick();
+  assert.equal(tm.pendingApprovals().length, 3);
+  assert.equal(tm.approveAllPlans(), 2);
+  assert.deepEqual(tm.pendingApprovals().map(a => a.kind), ['tool']);
+  assert.equal(procs[0].written.at(-1).response.response.behavior, 'allow');
+  assert.equal(tm.get(c.id).status, 'approval');
+});
+
 test('초안(칸반·비서)은 보내기 전까지 실행하지 않고, 보낼 때 팀·직원을 바꿀 수 있다', async () => {
   const { tm, procs } = setup();
   const d = tm.create({ instruction: '로그인 오류 확인', teamId: 'shop-fe', draft: true, source: 'secretary' });

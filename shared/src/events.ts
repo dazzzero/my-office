@@ -1,4 +1,5 @@
 // 훅 이벤트를 사무실 이벤트로 정규화한 형태와, 화면이 그리는 직원 상태.
+import type { Meeting, MeetingLine, MorningStatus } from './meetings.ts';
 import type { Approval, Task, TerminalApprovalMode } from './tasks.ts';
 
 export type EventKind =
@@ -61,6 +62,10 @@ export interface Worker {
   lastSeen: number;
   /** 처리한 도구 호출 수 */
   toolCount: number;
+  /** 이름표에 쓸 이름 (회의 참석자 "🧪QA" 등). 없으면 세션 id로 정한 이름 */
+  label?: string;
+  /** 회의 참석자면 그 회의 */
+  meetingId?: number;
 }
 
 export interface FloorSummary {
@@ -74,7 +79,12 @@ export interface FloorSummary {
 
 /** 서버 → 웹 WebSocket 메시지 */
 export type ServerMessage =
-  | { type: 'snapshot'; workers: Worker[]; floors: FloorSummary[]; recent: OfficeEvent[]; tasks: Task[]; approvals: Approval[]; terminalMode: TerminalApprovalMode }
+  | {
+    type: 'snapshot'; workers: Worker[]; floors: FloorSummary[]; recent: OfficeEvent[]; tasks: Task[]; approvals: Approval[]; terminalMode: TerminalApprovalMode;
+    meetings: Meeting[]; morning: MorningStatus;
+  }
   | { type: 'work'; tasks: Task[]; approvals: Approval[]; terminalMode: TerminalApprovalMode }
+  | { type: 'meetings'; meetings: Meeting[]; morning: MorningStatus }
+  | { type: 'meeting.line'; line: MeetingLine }
   | { type: 'event'; event: OfficeEvent; changed: Worker[]; removed: string[]; floors: FloorSummary[] }
   | { type: 'tick'; changed: Worker[]; removed: string[]; floors: FloorSummary[] };

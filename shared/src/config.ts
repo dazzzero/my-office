@@ -34,6 +34,8 @@ export interface MyOfficeConfig {
   rulesSync?: RulesSync[];
   /** 마이오피스가 직접 시키는 일 */
   runner: RunnerConfig;
+  /** 회의실 · 아침 루틴 */
+  meetings: MeetingsConfig;
   notifications: { windows: WindowsNotifyConfig; mobile: null | { provider: 'telegram' } };
 }
 
@@ -45,6 +47,24 @@ export interface RunnerConfig {
   claudePath?: string;
   /** 일이 끝나고 이 시간(분) 동안 추가 지시가 없으면 프로세스를 닫는다 (이어서 지시하면 다시 연다) */
   idleMinutes: number;
+}
+
+export interface MeetingsConfig {
+  /** 회의 참석자 최대 수 (서기 제외) */
+  maxAttendees: number;
+  /** 기획 회의 토론 라운드 기본값 */
+  defaultRounds: number;
+  morning: MorningConfig;
+}
+
+export interface MorningConfig {
+  enabled: boolean;
+  /** "09:00" (이 PC 시간) */
+  time: string;
+  /** 0=일 … 6=토 */
+  weekdays: number[];
+  /** 스탠드업을 열 층 */
+  floors: number[];
 }
 
 export interface RulesSync {

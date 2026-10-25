@@ -17,7 +17,13 @@ const { app, office } = await buildApp({
   store,
   token: ensureToken(),
   webRoot: join(ROOT, 'web', 'dist'),
+  schedule: true,
+  log: msg => console.log(msg),
   onApproval: (a, t) => notifier.approval(a, t),
+  onMeeting: m => {
+    notifier.meeting(m);
+    console.log(`🗣️ 회의 #${m.id} ${m.title}: ${m.status} (호출 ${m.calls}회, 추정 $${m.costUsd.toFixed(2)})${m.file ? ` → ${m.file}` : ''}`);
+  },
   onEvent: e => {
     notifier.handle(e);
     if (e.id < 0) return; // 데모 이벤트는 로그에 남기지 않는다

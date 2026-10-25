@@ -3,7 +3,8 @@
 import { spawn } from 'node:child_process';
 import type { MyOfficeConfig } from '../../shared/src/config.ts';
 import type { OfficeEvent } from '../../shared/src/events.ts';
-import type { Approval, Task } from '../../shared/src/tasks.ts';
+import type { Meeting } from '../../shared/src/meetings.ts';
+import type { Approval, Task, TodayChecklist } from '../../shared/src/tasks.ts';
 import { workerFullName } from '../../shared/src/identity.ts';
 
 const DEDUPE_MS = 60_000;
@@ -85,10 +86,20 @@ export class Notifier {
     }
   }
 
-  /** 마이오피스가 시킨 일에서 결재가 필요할 때 */
-  approval(a: Approval, t: Task): void {
+  /** 마이오피스가 시킨 일에서 결재가 필요할 때. t가 null이면 아침 스탠드업의 "오늘 할 일" 묶음 */
+  approval(a: Approval, t: Task | null): void {
     const rules = this.config.notifications.windows;
     if (!rules.enabled || !rules.waiting) return;
+    if (!t) {
+      const list = a.input as unknown as TodayChecklist;
+      const floor = this.config.floors.find(f => f.floor === list.floor);
+      this.once(`today:${a.id}`, a.createdAt, {
+        title: `☀️ 오늘 할 일 · ${floor?.label} ${floor?.name}`,
+        body: `아침 스탠드업이 ${list.items.length}건을 제안했어요 — 결재함에서 골라 주세요`,
+        url: `${this.baseUrl}/?floor=${list.floor}`,
+      });
+      return;
+    }
     const floor = this.config.floors.find(f => f.floor === t.floor);
     const where = `${floor?.label} ${floor?.name}`;
     const url = `${this.baseUrl}/?floor=${t.floor}`;
@@ -98,6 +109,20 @@ export class Notifier {
       // 훅으로 들어오는 "결재 대기" 알림과 같은 키 → 중복 알림 방지
       const what = a.toolName ? `${a.toolName}${a.reason ? ` (${a.reason})` : ''}` : '작업';
       this.once(`wait:${t.sessionId}:null`, a.createdAt, { title: `✋ 결재 요청 · ${where}`, body: `${t.title} — ${what}`, url });
+    }
+  }
+
+  /** 회의가 끝났을 때. 스탠드업은 "오늘 할 일" 알림으로 대신한다 */
+  meeting(m: Meeting): void {
+    const rules = this.config.notifications.windows;
+    if (!rules.enabled) return;
+    const floor = this.config.floors.find(f => f.floor === m.floor);
+    const where = `${floor?.label} ${floor?.name}`;
+    const url = `${this.baseUrl}/?floor=${m.floor}`;
+    if (m.status === 'failed' && rules.error) {
+      this.once(`meeting:${m.id}`, m.updatedAt, { title: `⚠️ 회의 실패 · ${where}`, body: `${m.title} — ${m.error ?? ''}`.slice(0, 200), url });
+    } else if (m.status === 'done' && m.kind !== 'standup' && rules.done) {
+      this.once(`meeting:${m.id}`, m.updatedAt, { title: `🗣️ 회의 끝 · ${where}`, body: `${m.title} — 할 일 ${m.taskIds.length}건이 칸반 초안으로 올라왔어요`, url });
     }
   }
 

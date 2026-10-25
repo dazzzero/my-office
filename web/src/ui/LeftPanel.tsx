@@ -39,7 +39,7 @@ export function LeftPanel() {
                   {here.map(w => (
                     <li key={w.id} onClick={e => { e.stopPropagation(); selectWorker(w.id); }}>
                       <span className="dot" style={{ background: teamColor(floorCfg, w.teamId) }} />
-                      {w.agentId ? <span className="sub">↳ {workerName(w)}</span> : workerName(w)}
+                      {w.meetingId ? <span className="sub">🗣️ {workerName(w)}</span> : w.agentId ? <span className="sub">↳ {workerName(w)}</span> : workerName(w)}
                       <i className={`st-${w.status}`}>{STATUS_LABEL[w.status]}</i>
                     </li>
                   ))}

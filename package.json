@@ -22,6 +22,9 @@
     "rules:sync": "node scripts/sync-rules.mjs",
     "demo": "node scripts/demo.mjs",
     "office": "node scripts/office.mjs",
-    "office:stop": "node scripts/office.mjs --stop"
+    "office:stop": "node scripts/office.mjs --stop",
+    "autostart:status": "node scripts/autostart.mjs --status",
+    "autostart:install": "node scripts/autostart.mjs",
+    "autostart:uninstall": "node scripts/autostart.mjs --uninstall"
   }
 }

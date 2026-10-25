@@ -114,6 +114,13 @@ export class OfficeState {
     return { changed, removed };
   }
 
+  /** 훅이 아닌 곳에서 만든 직원 (회의 참석자) 넣기·빼기 */
+  put(changed: Worker[], removed: string[]): Change {
+    for (const w of changed) this.workers.set(w.id, { ...w });
+    const gone = removed.filter(id => this.workers.delete(id));
+    return { changed, removed: gone };
+  }
+
   list(): Worker[] {
     return [...this.workers.values()];
   }

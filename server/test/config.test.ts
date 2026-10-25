@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { test } from 'node:test';
 import { EXAMPLE_CONFIG_FILE, createTeamMatcher, loadConfig, normPath } from '../src/config.ts';
 
@@ -14,6 +17,22 @@ test('층 배치: 1F가 기본, 1~5F + 옥상', () => {
   assert.equal(config.defaultFloor, 1);
   assert.deepEqual(config.floors.map(f => `${f.label} ${f.name}`),
     ['1F 쇼핑몰', '2F 사내 ERP', '3F 블로그', '4F 쇼핑몰 v2', '5F 연구소', '옥상 마이오피스 본사']);
+});
+
+test('회의 설정: 없으면 기본값, 잘못된 아침 시각·요일은 바로잡는다', () => {
+  assert.deepEqual(config.meetings.morning, { enabled: true, time: '09:00', weekdays: [1, 2, 3, 4, 5], floors: [1, 2, 3, 4, 5] });
+  const dir = mkdtempSync(join(tmpdir(), 'myoffice-cfg-'));
+  const file = join(dir, 'c.json');
+  const raw = JSON.parse(readFileSync(EXAMPLE_CONFIG_FILE, 'utf8'));
+  delete raw.meetings.maxAttendees;
+  raw.meetings.morning = { time: '25:00', weekdays: [1, 9, 'x'] };
+  writeFileSync(file, JSON.stringify(raw));
+  const c = loadConfig(file);
+  assert.equal(c.meetings.maxAttendees, 4);
+  assert.equal(c.meetings.morning.time, '09:00');
+  assert.deepEqual(c.meetings.morning.weekdays, [1]);
+  assert.equal(c.meetings.morning.floors.length, 6, '층을 안 정하면 전부');
+  rmSync(dir, { recursive: true, force: true });
 });
 
 test('폴더명이 같아도 전체 경로로 다른 층을 구분한다', () => {

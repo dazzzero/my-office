@@ -31,7 +31,7 @@ function WorkerDetail({ w }: { w: Worker }) {
         <span className="dot big" style={{ background: teamColor(floorCfg, w.teamId) }} />
         <div>
           <b>{workerFullName(w)}</b>
-          <span>{teamName(floorCfg, w.teamId)} · {w.agentType ? '서브에이전트' : '세션'}</span>
+          <span>{teamName(floorCfg, w.teamId)} ·{w.meetingId ? '회의 참석자' : w.agentType ? '서브에이전트' : '세션'}</span>
         </div>
       </div>
       <dl>
@@ -39,9 +39,15 @@ function WorkerDetail({ w }: { w: Worker }) {
         <dt>위치</dt><dd>{ZONE_LABEL[w.zone]}</dd>
         <dt>하는 일</dt><dd>{w.summary}</dd>
         <dt>출근</dt><dd>{hhmmss(w.startedAt)} ({since(w.startedAt)})</dd>
-        <dt>도구 사용</dt><dd>{w.toolCount}회</dd>
-        <dt>세션</dt><dd className="mono">{w.sessionId.slice(0, 8)}{w.agentId ? ` / ${w.agentId.slice(0, 8)}` : ''}</dd>
-        <dt>지시</dt><dd>{task ? <a onClick={() => openPanel({ taskId: task.id })}>📋 {task.title}</a> : 'Paseo·터미널에서 직접'}</dd>
+        {w.meetingId ? (
+          <><dt>회의</dt><dd><a onClick={() => openPanel({ meetingId: w.meetingId! })}>🗣️ 회의 보기</a></dd></>
+        ) : (
+          <>
+            <dt>도구 사용</dt><dd>{w.toolCount}회</dd>
+            <dt>세션</dt><dd className="mono">{w.sessionId.slice(0, 8)}{w.agentId ? ` / ${w.agentId.slice(0, 8)}` : ''}</dd>
+            <dt>지시</dt><dd>{task ? <a onClick={() => openPanel({ taskId: task.id })}>📋 {task.title}</a> : 'Paseo·터미널에서 직접'}</dd>
+          </>
+        )}
       </dl>
       <div className="actions"><button onClick={() => openCommand(w.teamId)}>📝 이 팀에 지시하기</button></div>
       <h4>최근 활동</h4>
@@ -91,7 +97,7 @@ export function RightPanel() {
                 <li key={w.id} onClick={() => selectWorker(w.id)}>
                   <span className="dot" style={{ background: teamColor(floorCfg, w.teamId) }} />
                   <div>
-                    <b>{w.agentId ? `↳ ${workerName(w)}` : workerName(w)}</b>
+                    <b>{w.meetingId ? `🗣️ ${workerName(w)}` : w.agentId ? `↳ ${workerName(w)}` : workerName(w)}</b>
                     <span>{teamName(floorCfg, w.teamId)}</span>
                     <span className={`chip st-${w.status}`}>{w.status === 'working' ? w.summary : STATUS_LABEL[w.status]}</span>
                   </div>

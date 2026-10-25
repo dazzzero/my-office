@@ -2,7 +2,9 @@
 // 실행 중 금지 목록·자동 모드 판단으로 결재가 필요하면 결재함으로 올린다.
 import type { DatabaseSync } from 'node:sqlite';
 import type { MyOfficeConfig, TeamConfig } from '../../shared/src/config.ts';
-import { ACTIVE_STATUSES, type Approval, type Task, type TaskLogEntry, type TaskSource, type TaskStatus, type TerminalApprovalMode } from '../../shared/src/tasks.ts';
+import {
+  ACTIVE_STATUSES, type Approval, type Task, type TaskLogEntry, type TaskSource, type TaskStatus, type TerminalApprovalMode, type TodayChecklist,
+} from '../../shared/src/tasks.ts';
 import { listAgents } from './agents.ts';
 import { toolSummary } from './normalize.ts';
 import { ClaudeProcess, resolveClaude, type PermissionResult, type Spawner } from './runner.ts';
@@ -34,6 +36,7 @@ const toTask = (r: Row, live: boolean): Task => ({
   createdAt: Number(r.created_at),
   updatedAt: Number(r.updated_at),
   live,
+  meetingId: r.meeting_id == null ? null : Number(r.meeting_id),
 });
 
 const toApproval = (r: Row): Approval => ({
@@ -59,8 +62,8 @@ export interface TaskManagerOptions {
   now?: () => number;
   /** 업무·결재가 바뀔 때 (화면 갱신) */
   onChange?: () => void;
-  /** 결재가 새로 필요할 때 (알림) */
-  onApproval?: (a: Approval, t: Task) => void;
+  /** 결재가 새로 필요할 때 (알림). 업무에 딸리지 않은 결재(오늘 할 일 묶음)는 t가 null */
+  onApproval?: (a: Approval, t: Task | null) => void;
   /** 고정 직원 목록 (테스트에서 바꿔 끼움) */
   agentsOf?: (teamPath: string) => { name: string }[];
 }
@@ -92,7 +95,7 @@ export class TaskManager {
   private readonly spawner?: Spawner;
   private readonly now: () => number;
   private readonly onChange: () => void;
-  private readonly onApproval: (a: Approval, t: Task) => void;
+  private readonly onApproval: (a: Approval, t: Task | null) => void;
   private readonly agentsOf: (teamPath: string) => { name: string }[];
   private live = new Map<number, Live>();
   private pending = new Map<number, PendingApproval>();
@@ -132,13 +135,20 @@ export class TaskManager {
     }));
   }
 
+  /** 이 층에서 아직 끝나지 않은 일 (아침 스탠드업의 "남은 할 일") */
+  openTasks(floor: number): Task[] {
+    const rows = this.db.prepare(`SELECT * FROM tasks WHERE floor = ? AND archived = 0
+      AND status IN ('draft', 'queued', 'planning', 'plan_review', 'running', 'approval', 'failed') ORDER BY created_at`).all(floor) as Row[];
+    return rows.map(r => toTask(r, this.live.has(Number(r.id))));
+  }
+
   get running(): number {
     return this.live.size;
   }
 
   // ───────── 지시 ─────────
 
-  create(input: { instruction: string; teamId: string; agent?: string | null; title?: string; source?: TaskSource; draft?: boolean }): Task {
+  create(input: { instruction: string; teamId: string; agent?: string | null; title?: string; source?: TaskSource; draft?: boolean; meetingId?: number | null }): Task {
     const instruction = input.instruction?.trim();
     if (!instruction) throw new TaskError('지시 내용이 비어 있습니다');
     const { floor, team } = this.team(input.teamId);
@@ -146,8 +156,8 @@ export class TaskManager {
     const title = input.title?.trim() || instruction.split('\n')[0].slice(0, 40);
     const t = this.now();
     const { lastInsertRowid } = this.db
-      .prepare('INSERT INTO tasks (title, instruction, floor, team_id, agent, source, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
-      .run(title, instruction, floor, team.id, agent, input.source ?? 'direct', input.draft ? 'draft' : 'queued', t, t);
+      .prepare('INSERT INTO tasks (title, instruction, floor, team_id, agent, source, status, meeting_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(title, instruction, floor, team.id, agent, input.source ?? 'direct', input.draft ? 'draft' : 'queued', input.meetingId ?? null, t, t);
     const id = Number(lastInsertRowid);
     this.addLog(id, 'instruction', instruction);
     if (!input.draft) this.schedule();
@@ -257,9 +267,53 @@ export class TaskManager {
     });
   }
 
-  decide(approvalId: number, approve: boolean, note = ''): Approval {
+  /** 아침 스탠드업이 제안한 "오늘 할 일" 묶음을 결재함에 올린다 (항목은 이미 초안으로 만들어져 있음) */
+  createChecklist(list: TodayChecklist, reason: string): Approval {
+    const { lastInsertRowid } = this.db
+      .prepare(`INSERT INTO approvals (task_id, kind, tool_name, input, reason, status, created_at)
+                VALUES (NULL, 'today', NULL, ?, ?, 'pending', ?)`)
+      .run(JSON.stringify(list), reason, this.now());
+    const a = toApproval(this.db.prepare('SELECT * FROM approvals WHERE id = ?').get(Number(lastInsertRowid)) as Row);
+    this.onApproval(a, null);
+    this.onChange();
+    return a;
+  }
+
+  /**
+   * 층마다 "오늘 할 일" 묶음은 하나: 이 층에 아직 결정 안 한 묶음이 있으면 취소하고,
+   * 그 안의 아직 초안인 항목은 새 묶음 앞에 이어 붙인다. 합쳐서 0건이면 새 묶음은 만들지 않는다.
+   */
+  replaceChecklist(meetingId: number, floor: number, taskIds: number[], reason: (carried: number) => string): Approval | null {
+    const carried: TodayChecklist['items'] = [];
+    for (const a of this.pendingApprovals().filter(x => x.kind === 'today' && (x.input as unknown as TodayChecklist).floor === floor)) {
+      for (const item of (a.input as unknown as TodayChecklist).items) {
+        const st = this.db.prepare('SELECT status FROM tasks WHERE id = ?').get(item.taskId) as Row | undefined;
+        if (st?.status === 'draft') carried.push(item);
+      }
+      this.db.prepare("UPDATE approvals SET status = 'cancelled', note = '새 아침 스탠드업 묶음으로 합침', decided_at = ? WHERE id = ?").run(this.now(), a.id);
+    }
+    const fresh = taskIds.map(id => this.get(id)).map(t => ({ taskId: t.id, title: t.title, teamId: t.teamId, agent: t.agent, instruction: t.instruction }));
+    const items = [...carried, ...fresh];
+    const a = items.length ? this.createChecklist({ meetingId, floor, items }, reason(carried.length)) : null;
+    this.onChange();
+    return a;
+  }
+
+  /** 기다리는 계획 결재를 모두 승인 */
+  approveAllPlans(): number {
+    const plans = this.pendingApprovals().filter(a => a.kind === 'plan' && this.pending.has(a.id));
+    for (const a of plans) this.decide(a.id, true);
+    return plans.length;
+  }
+
+  /**
+   * picks: "오늘 할 일" 묶음에서 고른 업무 id. 고른 것은 보내고(계획 → 계획 결재 → 실행),
+   * 안 고른 것은 반려로 치운다 (회의록에는 남아 있음). 생략하면 전부
+   */
+  decide(approvalId: number, approve: boolean, note = '', picks?: number[]): Approval {
     const row = this.db.prepare('SELECT * FROM approvals WHERE id = ?').get(approvalId) as Row | undefined;
     if (!row) throw new TaskError('없는 결재입니다');
+    if (row.kind === 'today') return this.decideChecklist(row, approve, note, picks);
     const terminal = this.terminalPending.get(approvalId);
     if (terminal && row.status === 'pending') {
       this.terminalPending.delete(approvalId);
@@ -303,6 +357,26 @@ export class TaskManager {
 
   // ───────── 내부 ─────────
 
+  private decideChecklist(row: Row, approve: boolean, note: string, picks?: number[]): Approval {
+    if (row.status !== 'pending') throw new TaskError('이미 처리된 결재입니다');
+    const list = JSON.parse(String(row.input)) as TodayChecklist;
+    const chosen = new Set(approve ? (picks ?? list.items.map(i => i.taskId)) : []);
+    let sent = 0;
+    for (const item of list.items) {
+      const task = this.db.prepare('SELECT status FROM tasks WHERE id = ?').get(item.taskId) as Row | undefined;
+      if (task?.status !== 'draft') continue; // 그사이 칸반에서 직접 보냈거나 치운 것
+      if (chosen.has(item.taskId)) { this.start(item.taskId); sent++; }
+      else {
+        this.update(item.taskId, { status: 'rejected', archived: 1 });
+        this.addLog(item.taskId, 'system', '오늘 할 일에서 고르지 않음');
+      }
+    }
+    const status = sent ? 'approved' : 'rejected';
+    this.db.prepare('UPDATE approvals SET status = ?, note = ?, decided_at = ? WHERE id = ?').run(status, note || `${sent}/${list.items.length}건 진행`, this.now(), Number(row.id));
+    this.onChange();
+    return toApproval(this.db.prepare('SELECT * FROM approvals WHERE id = ?').get(Number(row.id)) as Row);
+  }
+
   private team(teamId: string): { floor: number; team: TeamConfig } {
     for (const f of this.config.floors) {
       const team = f.teams.find(t => t.id === teamId);
@@ -342,7 +416,8 @@ export class TaskManager {
     const t = this.now();
     this.db.prepare(`UPDATE tasks SET status = 'stopped', error = '서버가 다시 시작되어 중단됐습니다', updated_at = ?
                      WHERE status IN ('planning', 'plan_review', 'running', 'approval')`).run(t);
-    this.db.prepare("UPDATE approvals SET status = 'cancelled', decided_at = ? WHERE status = 'pending'").run(t);
+    // 오늘 할 일 묶음은 프로세스와 상관없으니 그대로 둔다
+    this.db.prepare("UPDATE approvals SET status = 'cancelled', decided_at = ? WHERE status = 'pending' AND kind != 'today'").run(t);
   }
 
   private schedule(): void {

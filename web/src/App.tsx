@@ -4,7 +4,9 @@ import { useOffice } from './store.ts';
 import { ApprovalsPanel } from './ui/ApprovalsPanel.tsx';
 import { ChatPanel } from './ui/ChatPanel.tsx';
 import { CommandPanel } from './ui/CommandPanel.tsx';
+import { MEETING_ACTIVE } from '../../shared/src/meetings.ts';
 import { Kanban } from './ui/Kanban.tsx';
+import { MeetingDetail, MeetingsHome } from './ui/MeetingPanel.tsx';
 import { LeftPanel } from './ui/LeftPanel.tsx';
 import { RightPanel } from './ui/RightPanel.tsx';
 import { TaskPanel } from './ui/TaskPanel.tsx';
@@ -18,6 +20,7 @@ function Drawer() {
   const title = panel === 'approvals' ? `📥 결재함 (${approvals})`
     : panel === 'command' ? '📝 지시하기'
     : panel === 'chat' ? '💬 대표실 — 비서'
+    : panel === 'meetings' || 'meetingId' in panel ? '🗣️ 회의실'
     : '📋 업무';
   return (
     <div className="drawer">
@@ -25,7 +28,9 @@ function Drawer() {
       {panel === 'approvals' && <ApprovalsPanel />}
       {panel === 'command' && <CommandPanel key={commandTeam ?? 'none'} />}
       {panel === 'chat' && <ChatPanel />}
-      {typeof panel === 'object' && <TaskPanel key={panel.taskId} taskId={panel.taskId} />}
+      {panel === 'meetings' && <MeetingsHome />}
+      {typeof panel === 'object' && 'meetingId' in panel && <MeetingDetail key={panel.meetingId} meetingId={panel.meetingId} />}
+      {typeof panel === 'object' && 'taskId' in panel && <TaskPanel key={panel.taskId} taskId={panel.taskId} />}
     </div>
   );
 }
@@ -35,6 +40,7 @@ export function App() {
   const connected = useOffice(s => s.connected);
   const approvals = useOffice(s => s.approvals.length);
   const active = useOffice(s => s.tasks.filter(t => !['draft', 'done', 'failed', 'stopped', 'rejected'].includes(t.status)).length);
+  const meetingsActive = useOffice(s => s.meetings.filter(m => MEETING_ACTIVE.includes(m.status)).length);
   const panel = useOffice(s => s.panel);
   const kanban = useOffice(s => s.kanban);
   const toast = useOffice(s => s.toast);
@@ -62,6 +68,9 @@ export function App() {
             </button>
             <button className={panel === 'command' ? 'on' : ''} onClick={() => (panel === 'command' ? openPanel(null) : openCommand(null))}>📝 지시하기</button>
             <button className={panel === 'chat' ? 'on' : ''} onClick={() => openPanel(panel === 'chat' ? null : 'chat')}>💬 대표실</button>
+            <button className={panel === 'meetings' || (typeof panel === 'object' && panel && 'meetingId' in panel) ? 'on' : ''} onClick={() => openPanel(panel === 'meetings' ? null : 'meetings')}>
+              🗣️ 회의실{meetingsActive > 0 && <span className="count blue">{meetingsActive}</span>}
+            </button>
             <button className={kanban ? 'on' : ''} onClick={toggleKanban}>📋 칸반{active > 0 && <span className="count gray">{active}</span>}</button>
           </div>
         </header>

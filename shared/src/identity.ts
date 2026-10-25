@@ -19,7 +19,8 @@ export function hash(s: string): number {
   return h >>> 0;
 }
 
-export function workerName(w: Pick<Worker, 'sessionId' | 'agentType'>): string {
+export function workerName(w: Pick<Worker, 'sessionId' | 'agentType' | 'label'>): string {
+  if (w.label) return w.label;
   if (w.agentType) return w.agentType;
   const h = hash(w.sessionId);
   return SURNAMES[h % SURNAMES.length] + GIVEN[(h >>> 8) % GIVEN.length];
@@ -40,5 +41,6 @@ export function teamColor(floor: FloorConfig | undefined, teamId: string): strin
 }
 
 export function teamName(floor: FloorConfig | undefined, teamId: string): string {
+  if (teamId === 'hot') return '공용 역할';
   return floor?.teams.find(t => t.id === teamId)?.name ?? teamId;
 }

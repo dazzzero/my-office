@@ -23,7 +23,7 @@ function Card({ t }: { t: Task }) {
     <div className="kcard" draggable={t.status === 'draft'}
       onDragStart={e => e.dataTransfer.setData('text/task-id', String(t.id))}
       onClick={() => openPanel({ taskId: t.id })}>
-      <b>{t.title}</b>
+      <b>{t.source === 'meeting' && <span title="회의에서 나온 일">🗣️ </span>}{t.title}</b>
       <div className="meta">
         <span className="dot" style={{ background: where ? teamColor(where.floor, t.teamId) : HOT_COLOR }} />
         {where ? `${where.floor.label} ${where.team.name}` : t.teamId}{t.agent ? ` · ${t.agent}` : ''}

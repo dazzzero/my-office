@@ -10,7 +10,7 @@
  * done / failed / stopped / rejected
  */
 export type TaskStatus = 'draft' | 'queued' | 'planning' | 'plan_review' | 'running' | 'approval' | 'done' | 'failed' | 'stopped' | 'rejected';
-export type TaskSource = 'direct' | 'secretary' | 'kanban';
+export type TaskSource = 'direct' | 'secretary' | 'kanban' | 'meeting';
 
 export const ACTIVE_STATUSES: TaskStatus[] = ['planning', 'plan_review', 'running', 'approval'];
 
@@ -34,10 +34,22 @@ export interface Task {
   updatedAt: number;
   /** Claude 프로세스가 살아 있어서 바로 이어서 지시할 수 있는지 */
   live: boolean;
+  /** 회의에서 나온 할 일이면 그 회의 */
+  meetingId: number | null;
 }
 
-/** plan: 계획 결재, tool: 마이오피스가 시킨 일의 작업 결재, terminal: Paseo·터미널 세션의 권한 요청 (토글을 켰을 때) */
-export type ApprovalKind = 'plan' | 'tool' | 'terminal';
+/**
+ * plan: 계획 결재, tool: 마이오피스가 시킨 일의 작업 결재, terminal: Paseo·터미널 세션의 권한 요청 (토글을 켰을 때),
+ * today: 아침 스탠드업이 제안한 "오늘 할 일" 묶음 (골라서 승인)
+ */
+export type ApprovalKind = 'plan' | 'tool' | 'terminal' | 'today';
+
+/** today 결재의 input */
+export interface TodayChecklist {
+  meetingId: number;
+  floor: number;
+  items: { taskId: number; title: string; teamId: string; agent: string | null; instruction: string }[];
+}
 /** Paseo·터미널 세션의 결재를 어디서 받을지 */
 export type TerminalApprovalMode = 'terminal' | 'office';
 export type ApprovalStatus = 'pending' | 'approved' | 'rejected' | 'cancelled';

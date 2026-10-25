@@ -5,11 +5,16 @@ import Fastify from 'fastify';
 import type { WebSocket } from 'ws';
 import type { MyOfficeConfig } from '../../shared/src/config.ts';
 import type { OfficeEvent, ServerMessage } from '../../shared/src/events.ts';
+import type { AttendeeInput, Meeting, MeetingKind } from '../../shared/src/meetings.ts';
 import type { Approval, Task, TaskSource } from '../../shared/src/tasks.ts';
 import { listAgents } from './agents.ts';
 import { ROOT, createTeamMatcher } from './config.ts';
 import type { Store } from './db.ts';
+import type { GitReader } from './gitinfo.ts';
+import { MeetingManager } from './meetings.ts';
+import { MorningRoutine } from './morning.ts';
 import { normalize, shrink, type HookPayload } from './normalize.ts';
+import { createOneShot, type OneShot } from './oneshot.ts';
 import type { Spawner } from './runner.ts';
 import { askSecretary, type SecretaryAnswer } from './secretary.ts';
 import { createSecurity, type Security } from './security.ts';
@@ -28,7 +33,9 @@ export interface AppOptions {
   /** 이벤트가 저장될 때마다 호출 (서버 로그용) */
   onEvent?: (e: OfficeEvent) => void;
   /** 결재가 새로 필요할 때 (윈도우 알림) */
-  onApproval?: (a: Approval, t: Task) => void;
+  onApproval?: (a: Approval, t: Task | null) => void;
+  /** 회의가 끝났을 때 (윈도우 알림) */
+  onMeeting?: (m: Meeting) => void;
   /** 빌드된 화면(web/dist). 있으면 / 에서 서빙 */
   webRoot?: string;
   security?: Security;
@@ -36,6 +43,14 @@ export interface AppOptions {
   spawner?: Spawner;
   agentsOf?: (teamPath: string) => { name: string; description: string }[];
   secretary?: (text: string) => Promise<SecretaryAnswer>;
+  /** 테스트용: 회의의 Claude 호출·git 읽기를 가짜로 */
+  ask?: OneShot;
+  git?: GitReader;
+  /** 회의록 폴더 (기본: 설정의 meetingNotesDir) */
+  notesDir?: string;
+  /** 아침 루틴 스케줄 켜기 (서버 실행 시에만, 테스트는 끔) */
+  schedule?: boolean;
+  log?: (msg: string) => void;
 }
 
 /** `npm run demo`가 보내는 가짜 세션. 화면에는 보이지만 DB에는 남기지 않는다 */
@@ -45,7 +60,9 @@ export async function buildApp(o: AppOptions) {
   const { config, store, token, now = Date.now, onEvent, webRoot } = o;
   const security = o.security ?? createSecurity();
   const agentsOf = o.agentsOf ?? ((p: string) => listAgents(p));
-  const secretary = o.secretary ?? ((text: string) => askSecretary(config, agentsOf, text, ROOT));
+  const ask = o.ask ?? createOneShot(config.runner);
+  const secretary = o.secretary ?? ((text: string) => askSecretary(config, agentsOf, text, ROOT, ask));
+  const log = o.log ?? (() => {});
 
   // Read 결과처럼 큰 페이로드도 받아야 한다. 거절하면 그 이벤트를 잃는다.
   const app = Fastify({ bodyLimit: 64 * 1024 * 1024 });
@@ -81,6 +98,31 @@ export async function buildApp(o: AppOptions) {
     },
   });
 
+  // 회의 목록이 바뀌면 화면에 보낸다 (여러 번 바뀌어도 한 번만)
+  let meetingsQueued = false;
+  const sendMeetings = () => {
+    if (meetingsQueued || closing) return;
+    meetingsQueued = true;
+    setImmediate(() => {
+      meetingsQueued = false;
+      if (!closing) broadcast({ type: 'meetings', meetings: meetings.list(), morning: morning.status() });
+    });
+  };
+  const meetings: MeetingManager = new MeetingManager({
+    db: store.db, config, tasks, ask, agentsOf, git: o.git, now,
+    notesDir: o.notesDir ?? config.meetingNotesDir,
+    onChange: sendMeetings,
+    onLine: line => { if (!closing) broadcast({ type: 'meeting.line', line }); },
+    // 회의 참석자는 훅이 아니라 회의 엔진이 사무실에 넣고 뺀다
+    onWorkers: (changed, removed) => {
+      const c = office.put(changed, removed);
+      if (!closing) broadcast({ type: 'tick', changed: c.changed, removed: c.removed, floors: office.floorSummaries() });
+    },
+    onFinished: m => o.onMeeting?.(m),
+  });
+  const morning = new MorningRoutine({ db: store.db, config: config.meetings.morning, meetings, now, onChange: sendMeetings, log });
+  if (o.schedule) morning.start();
+
   app.setErrorHandler((err: Error & { statusCode?: number }, _req, reply) => {
     if (err instanceof TaskError) return reply.code(400).send({ error: err.message });
     reply.code(err.statusCode ?? 500).send({ error: err.message });
@@ -90,6 +132,8 @@ export async function buildApp(o: AppOptions) {
     if (req.headers['x-myoffice-token'] !== token) return reply.code(401).send();
     const p = (req.body ?? {}) as HookPayload;
     const norm = normalize(p);
+    // 회의 호출의 훅: 회의실 말풍선에만 반영 (따로 직원을 만들거나 DB·알림에 남기지 않는다)
+    if (norm && p.session_id && meetings.claimHook(p.session_id, norm.kind, norm.tool, norm.summary)) return reply.code(204).send();
     const match = p.cwd ? matchTeam(p.cwd) : null;
     // 등록되지 않은 폴더의 이벤트는 저장하지 않는다
     if (!norm || !match || !p.session_id) return reply.code(204).send();
@@ -177,8 +221,33 @@ export async function buildApp(o: AppOptions) {
     return { ok: true };
   });
 
-  app.post<{ Params: { id: string }; Body: { approve: boolean; note?: string } }>(
-    '/api/approvals/:id', async req => tasks.decide(Number(req.params.id), Boolean(req.body?.approve), req.body?.note ?? ''));
+  /** 기다리는 계획 결재 모두 승인 */
+  app.post('/api/approvals/approve-plans', async () => ({ approved: tasks.approveAllPlans() }));
+
+  app.post<{ Params: { id: string }; Body: { approve: boolean; note?: string; picks?: number[] } }>(
+    '/api/approvals/:id', async req => tasks.decide(Number(req.params.id), Boolean(req.body?.approve), req.body?.note ?? '',
+      Array.isArray(req.body?.picks) ? req.body.picks.map(Number) : undefined));
+
+  // ───────── 회의실 · 아침 루틴 ─────────
+
+  app.get('/api/meetings', async () => ({ meetings: meetings.list(), morning: morning.status(), personas: meetings.personaList(), maxAttendees: config.meetings.maxAttendees, defaultRounds: config.meetings.defaultRounds }));
+
+  app.get<{ Params: { id: string } }>('/api/meetings/:id', async req => {
+    const id = Number(req.params.id);
+    return { meeting: meetings.get(id), lines: meetings.lines(id) };
+  });
+
+  app.post<{ Body: { kind: MeetingKind; floor: number; title?: string; agenda?: string; attendees?: AttendeeInput[]; rounds?: number } }>(
+    '/api/meetings', async req => {
+      const b = req.body ?? ({} as never);
+      if (b.kind === 'standup') return meetings.openStandup(Number(b.floor), { force: true });
+      return meetings.open({ kind: b.kind, floor: Number(b.floor), title: b.title, agenda: b.agenda ?? '', attendees: b.attendees ?? [], rounds: b.rounds });
+    });
+
+  app.post<{ Params: { id: string } }>('/api/meetings/:id/stop', async req => meetings.stop(Number(req.params.id)));
+
+  /** 아침 루틴 지금 실행 (바뀐 것 없는 층은 건너뜀) */
+  app.post('/api/morning/run', async () => ({ meetings: await morning.run() }));
 
   /** 대표실 채팅: 비서가 업무 초안을 만든다 (초안은 대표가 확인 후 보냄) */
   app.post<{ Body: { text: string } }>('/api/secretary', async req => {
@@ -195,6 +264,7 @@ export async function buildApp(o: AppOptions) {
     const snapshot: ServerMessage = {
       type: 'snapshot', workers: office.list(), floors: office.floorSummaries(), recent: store.recentEvents(50),
       tasks: tasks.list(), approvals: tasks.pendingApprovals(), terminalMode: tasks.terminalMode,
+      meetings: meetings.list(), morning: morning.status(),
     };
     socket.send(JSON.stringify(snapshot));
   });
@@ -206,9 +276,11 @@ export async function buildApp(o: AppOptions) {
   app.addHook('onClose', async () => {
     closing = true;
     clearInterval(timer);
+    morning.stop();
+    meetings.shutdown();
     tasks.shutdown();
   });
 
   // Fastify 인스턴스는 thenable이라 async 반환값으로 그대로 내보내면 타입이 풀린다 → 객체로 감싼다
-  return { app, office, tasks, security };
+  return { app, office, tasks, meetings, morning, security };
 }

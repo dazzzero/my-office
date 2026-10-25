@@ -75,6 +75,39 @@ const MIGRATIONS = [
      text TEXT NOT NULL
    );
    CREATE INDEX task_log_task ON task_log(task_id, id);`,
+  // 3: Phase 3 — 회의실, 아침 루틴
+  `CREATE TABLE meetings (
+     id INTEGER PRIMARY KEY,
+     kind TEXT NOT NULL,
+     floor INTEGER NOT NULL,
+     title TEXT NOT NULL,
+     agenda TEXT NOT NULL,
+     attendees TEXT NOT NULL,
+     rounds INTEGER NOT NULL,
+     status TEXT NOT NULL,
+     minutes TEXT,
+     file TEXT,
+     error TEXT,
+     cost_usd REAL NOT NULL DEFAULT 0,
+     calls INTEGER NOT NULL DEFAULT 0,
+     routine_date TEXT,
+     created_at INTEGER NOT NULL,
+     updated_at INTEGER NOT NULL,
+     ended_at INTEGER
+   );
+   CREATE INDEX meetings_recent ON meetings(created_at);
+   CREATE TABLE meeting_lines (
+     id INTEGER PRIMARY KEY,
+     meeting_id INTEGER NOT NULL,
+     ts INTEGER NOT NULL,
+     stage TEXT NOT NULL,
+     round INTEGER,
+     speaker INTEGER,
+     gist TEXT,
+     text TEXT NOT NULL
+   );
+   CREATE INDEX meeting_lines_meeting ON meeting_lines(meeting_id, id);
+   ALTER TABLE tasks ADD COLUMN meeting_id INTEGER;`,
 ];
 
 type Row = Record<string, unknown>;

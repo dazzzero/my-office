@@ -188,6 +188,16 @@
     "model": "claude-opus-5-5",
     "idleMinutes": 15
   },
+  "meetings": {
+    "maxAttendees": 4,
+    "defaultRounds": 2,
+    "morning": {
+      "enabled": true,
+      "time": "09:00",
+      "weekdays": [1, 2, 3, 4, 5],
+      "floors": [1, 2, 3, 4, 5]
+    }
+  },
   "notifications": {
     "windows": {
       "enabled": true,
