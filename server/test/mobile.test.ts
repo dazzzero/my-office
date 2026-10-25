@@ -93,6 +93,11 @@ test('푸시: 결재가 생기면 휴대폰에 짧은 알림, 처리되면 알�
   await tick();
   assert.ok(sent.some(s => s.note.type === 'clear' && s.note.tag === tag), '처리되면 알림 지우기');
 
+  sent.length = 0;
+  assert.equal((await app.inject({ method: 'POST', url: '/api/devices/me/test', headers: auth })).statusCode, 200);
+  await tick();
+  assert.deepEqual(sent.map(s => s.note.tag), ['test'], '테스트 알림은 그 기기에만');
+
   await app.inject({ method: 'POST', url: '/api/devices/me', headers: auth, payload: { prefs: { approval: false } } });
   sent.length = 0;
   await tasks.waitTerminalApproval({ sessionId: 's1', toolName: 'Bash', input: {}, reason: null }, 10);

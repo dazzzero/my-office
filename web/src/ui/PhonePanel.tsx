@@ -106,7 +106,13 @@ function PhoneSettings() {
       <h4>알림</h4>
       {!supported && <p className="hint">이 브라우저에선 알림을 받을 수 없어요. 크롬에서 열고 "홈 화면에 추가"로 설치해 주세요.</p>}
       {supported && (me.push
-        ? <div className="actions"><span className="ok-line">🔔 이 기기로 알림을 받고 있어요</span><button disabled={busy} onClick={() => run(disablePush)}>알림 끄기</button></div>
+        ? (
+          <div className="actions">
+            <span className="ok-line">🔔 이 기기로 알림을 받고 있어요</span>
+            <button disabled={busy} onClick={() => run(() => api('POST', '/api/devices/me/test', {}))}>테스트 알림 보내기</button>
+            <button disabled={busy} onClick={() => run(disablePush)}>알림 끄기</button>
+          </div>
+        )
         : <div className="actions"><button className="primary" disabled={busy} onClick={() => run(() => enablePush(st.pushKey))}>🔔 알림 켜기</button></div>)}
       {(Object.keys(PREF_LABEL) as (keyof MobilePrefs)[]).map(k => (
         <label key={k} className="check">

@@ -60,6 +60,13 @@ export class MobilePush {
     this.send('failed', { tag: `task-${t.id}`, title: `⚠️ 업무 실패 · ${this.where(t.floor)}`, body: '눌러서 확인', url: `/?floor=${t.floor}&open=task-${t.id}` });
   }
 
+  /** 알림 설정 화면의 "테스트 알림" (그 기기에만) */
+  test(deviceId: number): boolean {
+    const target = this.devices.pushTargets().filter(t => t.id === deviceId);
+    this.dispatch(target, { type: 'show', tag: 'test', title: '🔔 마이오피스 알림 테스트', body: '이렇게 알림이 와요', url: '/?open=approvals' });
+    return target.length > 0;
+  }
+
   /** 다른 곳(PC·다른 기기)에서 처리된 알림은 지운다 */
   clear(tag: string): void {
     this.dispatch(this.devices.pushTargets(), { type: 'clear', tag });

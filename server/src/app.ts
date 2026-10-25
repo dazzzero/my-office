@@ -234,6 +234,12 @@ export async function buildApp(o: AppOptions) {
     return { ok: true };
   });
 
+  app.post('/api/devices/me/test', async req => {
+    if (!req.device) throw new TaskError('휴대폰에서만 할 수 있어요');
+    if (!push.test(req.device.id)) throw new TaskError('먼저 알림을 켜 주세요');
+    return { ok: true };
+  });
+
   /** 휴대폰: 내 기기 이름·푸시 등록·알림 종류 */
   app.post<{ Body: { name?: string; push?: PushSubscriptionJSON | null; prefs?: Partial<MobilePrefs> } }>('/api/devices/me', async req => {
     if (!req.device) throw new TaskError('휴대폰에서만 할 수 있어요');
