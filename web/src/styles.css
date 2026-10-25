@@ -259,6 +259,14 @@ input.note, .form input, .form select, .form textarea, .draft select, .follow-up
 .ok-line { color: #1f8a4c; font-size: 12.5px; align-self: center; }
 .phone .check { margin: 6px 0 !important; }
 
+/* 앱 설치 띠 */
+.install-banner { display: flex; align-items: center; gap: 10px; padding: 8px 10px; background: #fff6ef; border-bottom: 1px solid #f3d0b4; }
+.install-banner img { border-radius: 8px; flex: none; }
+.install-banner div { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.install-banner b { font-size: 13.5px; }
+.install-banner span { font-size: 12px; color: #8a4207; }
+.install-banner .x { border: 0; background: none; padding: 4px 6px; color: var(--sub); }
+
 /* 휴대폰: 아직 연결 안 됨 */
 .pair { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px; text-align: center; gap: 6px; }
 .pair img { border-radius: 18px; }

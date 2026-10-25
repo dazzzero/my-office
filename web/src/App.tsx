@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { MEETING_ACTIVE } from '../../shared/src/meetings.ts';
 import { isRemote } from './api.ts';
+import { dismissInstall, install, useInstall } from './install.ts';
 import { OfficeScene, zoomBy } from './office/Scene.tsx';
 import { useOffice, type Panel } from './store.ts';
 import { ApprovalsPanel } from './ui/ApprovalsPanel.tsx';
@@ -64,6 +65,24 @@ function Drawer() {
       {panel === 'floors' && <LeftPanel />}
       {typeof panel === 'object' && 'meetingId' in panel && <MeetingDetail key={panel.meetingId} meetingId={panel.meetingId} />}
       {typeof panel === 'object' && 'taskId' in panel && <TaskPanel key={panel.taskId} taskId={panel.taskId} />}
+    </div>
+  );
+}
+
+/** 휴대폰·태블릿 브라우저로 열었을 때: 앱으로 설치하라는 띠 (설치했거나 닫으면 안 보임) */
+function InstallBanner() {
+  const { installed, dismissed } = useInstall();
+  const [help, setHelp] = useState(false);
+  if (!isRemote || installed || dismissed) return null;
+  return (
+    <div className="install-banner">
+      <img src="/icon-192.png" alt="" width={32} height={32} />
+      <div>
+        <b>마이오피스 앱 설치</b>
+        <span>{help ? '크롬 메뉴(⋮) → "앱 설치" 또는 "홈 화면에 추가"를 눌러 주세요' : '주소 없이 홈 화면 아이콘으로 바로 열려요'}</span>
+      </div>
+      <button className="primary" onClick={async () => { if (!(await install())) setHelp(true); }}>설치</button>
+      <button className="x" onClick={dismissInstall} title="닫기">✕</button>
     </div>
   );
 }
@@ -132,6 +151,7 @@ function DesktopApp() {
     <div className="app">
       <LeftPanel />
       <main>
+        <InstallBanner />
         <header>
           {floor && (
             <div className="card">
@@ -194,6 +214,7 @@ function MobileApp() {
         <span className={`live${connected ? '' : ' off'}`}>{connected ? '● LIVE' : '○'}</span>
         <button className="icon" onClick={() => setZoomKey(k => k + 1)} title="처음 화면으로">⟲</button>
       </header>
+      <InstallBanner />
       <div className="mbody">
         <div className="view">
           {/* 창이 화면을 다 덮고 있으면 3D는 그리지 않는다 (배터리) */}

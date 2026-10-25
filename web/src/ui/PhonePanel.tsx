@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { Device, MobilePrefs, MobileStatus } from '../../../shared/src/mobile.ts';
 import { api, isRemote } from '../api.ts';
+import { install, useInstall } from '../install.ts';
 import { disablePush, enablePush, pushSupported, syncPush } from '../push.ts';
 import { attempt, useOffice } from '../store.ts';
 import { ago } from './labels.ts';
@@ -96,6 +97,8 @@ function PhoneSettings() {
   const powerSave = useOffice(s => s.powerSave);
   const setPowerSave = useOffice(s => s.setPowerSave);
   const [busy, setBusy] = useState(false);
+  const installed = useInstall(s => s.installed);
+  const [installHelp, setInstallHelp] = useState(false);
   useEffect(() => { if (st?.pushKey) void syncPush(st.pushKey); }, [st?.pushKey]);
   if (!st?.me) return <div className="panel-body"><p className="empty">불러오는 중…</p></div>;
   const me = st.me;
@@ -122,6 +125,15 @@ function PhoneSettings() {
         </label>
       ))}
       <p className="hint">알림 문구는 "📋 계획 결재 · 2F"처럼 짧게만 보내고, 내용은 앱을 열어야 보여요. "작업 완료" 알림은 PC로만 가요.</p>
+      <h4>앱</h4>
+      {installed
+        ? <p className="ok-line">📲 앱으로 설치돼 있어요</p>
+        : (
+          <div className="actions">
+            <button className="primary" onClick={async () => { if (!(await install())) setInstallHelp(true); }}>📲 앱 설치</button>
+            {installHelp && <span className="hint">크롬 메뉴(⋮) → "앱 설치" 또는 "홈 화면에 추가"</span>}
+          </div>
+        )}
       <h4>화면</h4>
       <label className="check">
         <input type="checkbox" checked={powerSave} onChange={e => setPowerSave(e.target.checked)} />
