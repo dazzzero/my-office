@@ -108,6 +108,17 @@ const MIGRATIONS = [
    );
    CREATE INDEX meeting_lines_meeting ON meeting_lines(meeting_id, id);
    ALTER TABLE tasks ADD COLUMN meeting_id INTEGER;`,
+  // 4: Phase 4 — 연결된 휴대폰 (키는 해시만)
+  `CREATE TABLE devices (
+     id INTEGER PRIMARY KEY,
+     name TEXT NOT NULL,
+     token_hash TEXT NOT NULL UNIQUE,
+     push TEXT,
+     prefs TEXT,
+     created_at INTEGER NOT NULL,
+     last_seen INTEGER,
+     revoked_at INTEGER
+   );`,
 ];
 
 type Row = Record<string, unknown>;

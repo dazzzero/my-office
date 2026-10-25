@@ -9,6 +9,8 @@ Claude Code 에이전트들이 일하는 사무실.
   할 일은 칸반 초안이 되고, 회의록은 설정의 `meetingNotesDir`에 저장된다. 회의는 파일을 바꾸지 않는다.
 - **아침 루틴**: 평일 아침(기본 09:00) 층마다 스탠드업을 열어 "오늘 할 일"을 결재함에 묶음으로 올린다.
   그 시각에 서버가 꺼져 있었으면 그날 처음 켜질 때 연다. 바뀐 것도 남은 일도 없는 층은 건너뛴다.
+- **휴대폰**: 같은 3D 사무실을 휴대폰에서 보고 결재·지시·회의까지 (웹 앱 설치 + 푸시 알림).
+  서버는 인터넷에 공개하지 않고 [Tailscale](https://tailscale.com)로 연결된 내 기기만 들어온다. PC 화면 📱에서 QR로 기기를 연결한다.
 
 ## 요구 사항
 - Windows, Node.js 24 이상, Claude Code
@@ -41,6 +43,9 @@ Claude Code 에이전트들이 일하는 사무실.
 | `npm run autostart:install` | 윈도우 로그인 시 서버를 창 없이 자동 실행 (시작프로그램 바로가기, 아침 루틴에 필요) |
 | `npm run autostart:uninstall` | 자동 실행 끄기 |
 | `npm run autostart:status` | 자동 실행 여부 |
+| `npm run phone:status` | 휴대폰 연결 준비 상태 (Tailscale·HTTPS 인증서·연결) |
+| `npm run phone:serve` | Tailscale serve로 `https://<내PC>.ts.net`을 마이오피스에 연결 (내 Tailscale 기기에서만 열림) |
+| `npm run phone:off` | 휴대폰 연결 끄기 |
 
 ## 구조
 - `myoffice.config.json` — 내 설정: 층·팀(폴더)·회의록 경로·공통 금지 목록·알림·아침 루틴 (git 제외)

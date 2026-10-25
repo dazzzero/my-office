@@ -90,6 +90,8 @@ export class Notifier {
   approval(a: Approval, t: Task | null): void {
     const rules = this.config.notifications.windows;
     if (!rules.enabled || !rules.waiting) return;
+    // Paseo·터미널 결재는 훅의 "결재 대기" 이벤트로 이미 알림이 간다
+    if (a.kind === 'terminal') return;
     if (!t) {
       const list = a.input as unknown as TodayChecklist;
       const floor = this.config.floors.find(f => f.floor === list.floor);

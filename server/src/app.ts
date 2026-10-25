@@ -6,6 +6,11 @@ import type { WebSocket } from 'ws';
 import type { MyOfficeConfig } from '../../shared/src/config.ts';
 import type { OfficeEvent, ServerMessage } from '../../shared/src/events.ts';
 import type { AttendeeInput, Meeting, MeetingKind } from '../../shared/src/meetings.ts';
+import type { MobilePrefs, MobileStatus, TailnetInfo } from '../../shared/src/mobile.ts';
+import QRCode from 'qrcode';
+import { Devices, type PushSubscriptionJSON } from './devices.ts';
+import { MobilePush, type PushSender } from './push.ts';
+import { OFF, readTailnet } from './tailnet.ts';
 import type { Approval, Task, TaskSource } from '../../shared/src/tasks.ts';
 import { listAgents } from './agents.ts';
 import { ROOT, createTeamMatcher } from './config.ts';
@@ -50,6 +55,10 @@ export interface AppOptions {
   notesDir?: string;
   /** 아침 루틴 스케줄 켜기 (서버 실행 시에만, 테스트는 끔) */
   schedule?: boolean;
+  /** 이 PC의 Tailscale 상태 읽기 (테스트에서 바꿔 끼움) */
+  tailnet?: () => Promise<TailnetInfo>;
+  /** 휴대폰 푸시 보내기 (테스트에서 바꿔 끼움) */
+  pushSender?: PushSender;
   log?: (msg: string) => void;
 }
 
@@ -58,7 +67,16 @@ export const isDemoSession = (sessionId: string) => sessionId.startsWith('demo-'
 
 export async function buildApp(o: AppOptions) {
   const { config, store, token, now = Date.now, onEvent, webRoot } = o;
-  const security = o.security ?? createSecurity();
+  const devices = new Devices(store.db, now);
+  // 휴대폰이 들어오는 Tailscale 주소·계정. 1분마다 새로 읽는다 (나중에 Tailscale을 켜도 반영되게)
+  let tailnet: TailnetInfo = OFF;
+  const readTs = o.tailnet ?? (() => readTailnet(config.server.port));
+  const refreshTailnet = async () => { tailnet = await readTs().catch(() => OFF); return tailnet; };
+  // 서버 시작을 붙잡지 않게 기다리지 않는다 (읽기 전 몇 초간 휴대폰 요청은 거절될 뿐)
+  void refreshTailnet();
+  const tsTimer = setInterval(() => void refreshTailnet(), 60_000);
+  tsTimer.unref?.();
+  const security = o.security ?? createSecurity(undefined, { tailnet: () => tailnet, verifyDevice: t => devices.verify(t) });
   const agentsOf = o.agentsOf ?? ((p: string) => listAgents(p));
   const ask = o.ask ?? createOneShot(config.runner);
   const secretary = o.secretary ?? ((text: string) => askSecretary(config, agentsOf, text, ROOT, ask));
@@ -76,27 +94,42 @@ export async function buildApp(o: AppOptions) {
   for (const e of store.eventsSince(now() - REPLAY_WINDOW)) office.apply(e);
   office.tick(now());
 
-  const clients = new Set<WebSocket>();
+  /** 연결된 화면. 휴대폰이면 기기 id (연결을 끊으면 바로 닫으려고) */
+  const clients = new Map<WebSocket, number | null>();
   const broadcast = (msg: ServerMessage) => {
     const data = JSON.stringify(msg);
-    for (const ws of clients) ws.send(data);
+    for (const ws of clients.keys()) ws.send(data);
   };
+
+  const push = new MobilePush({ db: store.db, config, devices, sender: o.pushSender, log });
+  // 처리된 결재의 휴대폰 알림은 지운다 (PC·다른 기기에서 처리했을 때)
+  let pendingIds = new Set<number>();
 
   // 업무·결재가 바뀌면 화면에 보낸다 (한 번에 여러 번 바뀌어도 한 번만)
   let workQueued = false;
   let closing = false;
   const tasks: TaskManager = new TaskManager({
     db: store.db, config, now, spawner: o.spawner, agentsOf,
-    onApproval: o.onApproval,
+    onApproval: (a, t) => {
+      o.onApproval?.(a, t);
+      push.approval(a, t, a.sessionId ? office.workers.get(a.sessionId)?.floor : null);
+    },
+    onFailed: t => push.failed(t),
     onChange: () => {
       if (workQueued || closing) return;
       workQueued = true;
       setImmediate(() => {
         workQueued = false;
-        if (!closing) broadcast({ type: 'work', tasks: tasks.list(), approvals: tasks.pendingApprovals(), terminalMode: tasks.terminalMode });
+        if (closing) return;
+        const approvals = tasks.pendingApprovals();
+        const now = new Set(approvals.map(a => a.id));
+        for (const id of pendingIds) if (!now.has(id)) push.clear(`approval-${id}`);
+        pendingIds = now;
+        broadcast({ type: 'work', tasks: tasks.list(), approvals, terminalMode: tasks.terminalMode });
       });
     },
   });
+  pendingIds = new Set(tasks.pendingApprovals().map(a => a.id));
 
   // 회의 목록이 바뀌면 화면에 보낸다 (여러 번 바뀌어도 한 번만)
   let meetingsQueued = false;
@@ -118,7 +151,7 @@ export async function buildApp(o: AppOptions) {
       const c = office.put(changed, removed);
       if (!closing) broadcast({ type: 'tick', changed: c.changed, removed: c.removed, floors: office.floorSummaries() });
     },
-    onFinished: m => o.onMeeting?.(m),
+    onFinished: m => { o.onMeeting?.(m); push.meeting(m); },
   });
   const morning = new MorningRoutine({ db: store.db, config: config.meetings.morning, meetings, now, onChange: sendMeetings, log });
   if (o.schedule) morning.start();
@@ -170,8 +203,42 @@ export async function buildApp(o: AppOptions) {
 
   app.get('/health', async () => ({ ok: true, events: store.countEvents(), workers: office.workers.size, running: tasks.running }));
 
-  /** 화면이 처음 열릴 때 키를 받아 간다. 다른 사이트는 이 응답을 읽을 수 없다 */
-  app.get('/api/session', async () => ({ key: security.uiKey }));
+  /** 화면이 처음 열릴 때 키를 받아 간다. 다른 사이트는 이 응답을 읽을 수 없다. 휴대폰은 기기 키를 쓰므로 주지 않는다 */
+  app.get('/api/session', async req => ({ key: req.device ? '' : security.uiKey }));
+
+  // ───────── 휴대폰 ─────────
+
+  const mobileStatus = async (): Promise<MobileStatus> => {
+    const ts = await refreshTailnet();
+    return { tailnet: ts, url: ts.dnsName && ts.certs && ts.serving ? `https://${ts.dnsName}` : null, devices: devices.list() };
+  };
+
+  app.get('/api/mobile', async req => ({ ...(await mobileStatus()), me: req.device ?? null, pushKey: push.keys.publicKey }));
+
+  /** PC 화면: 휴대폰으로 찍을 QR (일회용 연결 코드, 10분) */
+  app.post('/api/devices/pair', async () => {
+    const ts = await refreshTailnet();
+    if (!ts.dnsName) throw new TaskError('Tailscale이 켜져 있지 않아요. Tailscale을 켜고 로그인해 주세요');
+    const { code, expiresAt } = devices.pairCode();
+    const url = `https://${ts.dnsName}/?pair=${code}`;
+    return { url, expiresAt, svg: await QRCode.toString(url, { type: 'svg', margin: 1, errorCorrectionLevel: 'M' }) };
+  });
+
+  /** 휴대폰: QR의 코드를 내고 기기 키를 받는다 */
+  app.post<{ Body: { code?: string; name?: string } }>('/api/devices/claim', async req => devices.claim(String(req.body?.code ?? ''), String(req.body?.name ?? '')));
+
+  app.post<{ Params: { id: string } }>('/api/devices/:id/revoke', async req => {
+    const id = Number(req.params.id);
+    devices.revoke(id);
+    for (const [ws, dev] of clients) if (dev === id) ws.close();
+    return { ok: true };
+  });
+
+  /** 휴대폰: 내 기기 이름·푸시 등록·알림 종류 */
+  app.post<{ Body: { name?: string; push?: PushSubscriptionJSON | null; prefs?: Partial<MobilePrefs> } }>('/api/devices/me', async req => {
+    if (!req.device) throw new TaskError('휴대폰에서만 할 수 있어요');
+    return devices.update(req.device.id, req.body ?? {});
+  });
 
   app.get('/api/config', async () => ({
     defaultFloor: config.defaultFloor,
@@ -258,8 +325,8 @@ export async function buildApp(o: AppOptions) {
     return { reply: answer.reply, drafts };
   });
 
-  app.get('/ws', { websocket: true }, socket => {
-    clients.add(socket);
+  app.get('/ws', { websocket: true }, (socket, req) => {
+    clients.set(socket, req.device?.id ?? null);
     socket.on('close', () => clients.delete(socket));
     const snapshot: ServerMessage = {
       type: 'snapshot', workers: office.list(), floors: office.floorSummaries(), recent: store.recentEvents(50),
@@ -276,11 +343,12 @@ export async function buildApp(o: AppOptions) {
   app.addHook('onClose', async () => {
     closing = true;
     clearInterval(timer);
+    clearInterval(tsTimer);
     morning.stop();
     meetings.shutdown();
     tasks.shutdown();
   });
 
   // Fastify 인스턴스는 thenable이라 async 반환값으로 그대로 내보내면 타입이 풀린다 → 객체로 감싼다
-  return { app, office, tasks, meetings, morning, security };
+  return { app, office, tasks, meetings, morning, security, devices, push };
 }

@@ -132,15 +132,20 @@ function Workers({ plan, floor }: { plan: FloorPlan; floor: FloorConfig }) {
   );
 }
 
-export function OfficeScene({ floor, zoomKey }: { floor: FloorConfig; zoomKey: number }) {
+export function OfficeScene({ floor, zoomKey, paused = false }: { floor: FloorConfig; zoomKey: number; paused?: boolean }) {
   const plan = useMemo(() => buildFloorPlan(floor), [floor]);
   const selectWorker = useOffice(s => s.selectWorker);
+  // 화질: PC 기본 / 휴대폰은 해상도·그림자 한 단계 낮게 / 절전 모드는 그림자 없이 1배
+  const mobile = useOffice(s => s.mobile);
+  const powerSave = useOffice(s => s.powerSave);
+  const dpr: [number, number] = powerSave ? [1, 1] : mobile ? [1, 1.25] : [1, 1.5];
+  const shadowSize = mobile ? 512 : 1024;
   return (
     <Canvas
-      key={floor.floor}
-      frameloop="demand"
-      dpr={[1, 1.5]}
-      shadows={{ type: PCFShadowMap }}
+      key={`${floor.floor}-${powerSave ? 'save' : 'full'}`}
+      frameloop={paused ? 'never' : 'demand'}
+      dpr={dpr}
+      shadows={powerSave ? false : { type: PCFShadowMap }}
       orthographic
       camera={{ position: CAMERA_POS, near: 0.1, far: 200, zoom: 40 }}
       onPointerMissed={() => selectWorker(null)}
@@ -150,8 +155,8 @@ export function OfficeScene({ floor, zoomKey }: { floor: FloorConfig; zoomKey: n
       <directionalLight
         position={[CENTER[0] + 6, 14, CENTER[2] + 10]}
         intensity={1.9}
-        castShadow
-        shadow-mapSize={[1024, 1024]}
+        castShadow={!powerSave}
+        shadow-mapSize={[shadowSize, shadowSize]}
         shadow-bias={-0.0005}
         shadow-normalBias={0.02}
         shadow-camera-left={-11}

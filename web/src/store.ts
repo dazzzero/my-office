@@ -4,17 +4,32 @@ import type { FloorConfig } from '../../shared/src/config.ts';
 import type { FloorSummary, OfficeEvent, ServerMessage, Worker } from '../../shared/src/events.ts';
 import type { Meeting, MeetingLine, MorningStatus } from '../../shared/src/meetings.ts';
 import type { Approval, Task, TerminalApprovalMode } from '../../shared/src/tasks.ts';
-import { initKey } from './api.ts';
+import { api, forgetDevice, initKey, isRemote, pairIfNeeded, setUnauthorizedHandler, wsUrl } from './api.ts';
 
 const MAX_EVENTS = 300;
 
-/** 오른쪽에 겹쳐 여는 창 */
-export type Panel = null | 'approvals' | 'command' | 'chat' | 'meetings' | { taskId: number } | { meetingId: number };
+/**
+ * 오른쪽(휴대폰은 전체 화면)에 겹쳐 여는 창.
+ * phone: PC에선 "휴대폰 연결"(QR), 휴대폰에선 알림·화질 설정. more·people·floors: 휴대폰 "더보기"
+ */
+export type Panel = null | 'approvals' | 'command' | 'chat' | 'meetings' | 'phone' | 'more' | 'people' | 'floors'
+  | { taskId: number } | { meetingId: number };
+
+const POWER_KEY = 'myoffice-power-save';
+const mobileQuery = window.matchMedia('(max-width: 760px)');
 
 interface OfficeStore {
   floorsConfig: FloorConfig[];
   maxConcurrent: number;
   connected: boolean;
+  /** 휴대폰인데 아직 연결(QR)이 안 됨 */
+  needPair: boolean;
+  pairError: string | null;
+  /** 휴대폰 크기 화면 */
+  mobile: boolean;
+  /** 절전 모드: 3D 해상도·그림자를 더 낮춤 */
+  powerSave: boolean;
+  setPowerSave: (on: boolean) => void;
   workers: Record<string, Worker>;
   /** 서버에서 빠졌지만 엘리베이터까지 걸어가는 중인 직원 */
   departing: Record<string, Worker>;
@@ -47,6 +62,11 @@ export const useOffice = create<OfficeStore>()(set => ({
   floorsConfig: [],
   maxConcurrent: 10,
   connected: false,
+  needPair: false,
+  pairError: null,
+  mobile: mobileQuery.matches,
+  powerSave: localStorage.getItem(POWER_KEY) === '1',
+  setPowerSave: on => { localStorage.setItem(POWER_KEY, on ? '1' : '0'); set({ powerSave: on }); },
   workers: {},
   departing: {},
   floors: [],
@@ -148,22 +168,48 @@ function handle(msg: ServerMessage) {
   }
 }
 
+/**
+ * 알림을 눌러 들어온 주소(?floor=N&open=…)대로 층·창을 연다.
+ * open: approvals | meeting-ID | task-ID
+ */
+export function openFromUrl(url: string) {
+  const params = new URL(url, location.origin).searchParams;
+  const s = useOffice.getState();
+  const floor = Number(params.get('floor'));
+  if (s.floorsConfig.some(f => f.floor === floor)) s.selectFloor(floor);
+  const open = params.get('open') ?? '';
+  if (open === 'approvals') s.openPanel('approvals');
+  else if (/^meeting-\d+$/.test(open)) s.openPanel({ meetingId: Number(open.slice(8)) });
+  else if (/^task-\d+$/.test(open)) s.openPanel({ taskId: Number(open.slice(5)) });
+}
+
 export async function startOffice() {
+  mobileQuery.addEventListener('change', e => useOffice.setState({ mobile: e.matches }));
+  // 휴대폰: 연결 해제 등으로 기기 키가 거절되면 연결 화면으로
+  setUnauthorizedHandler(() => { forgetDevice(); useOffice.setState({ needPair: true }); });
+  try {
+    if (!(await pairIfNeeded())) return useOffice.setState({ needPair: true });
+  } catch (e) {
+    return useOffice.setState({ needPair: true, pairError: (e as Error).message });
+  }
   await initKey();
-  const res = await fetch('/api/config');
-  const config = (await res.json()) as { defaultFloor: number; floors: FloorConfig[]; maxConcurrent: number };
+  const config = await api<{ defaultFloor: number; floors: FloorConfig[]; maxConcurrent: number }>('GET', '/api/config');
   // 앱을 열면 항상 기본 층(1F)부터. 단, 알림을 눌러 들어온 경우(?floor=N)는 그 층
   const fromToast = Number(new URLSearchParams(location.search).get('floor'));
   const start = config.floors.some(f => f.floor === fromToast) ? fromToast : config.defaultFloor;
   useOffice.setState({ floorsConfig: config.floors, maxConcurrent: config.maxConcurrent, selectedFloor: start });
+  openFromUrl(location.href);
 
   let retry = 500;
   const connect = () => {
-    const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`);
+    if (useOffice.getState().needPair) return;
+    const ws = new WebSocket(wsUrl());
     ws.onopen = () => { retry = 500; useOffice.setState({ connected: true }); };
     ws.onmessage = m => handle(JSON.parse(m.data as string) as ServerMessage);
     ws.onclose = () => {
       useOffice.setState({ connected: false });
+      // 휴대폰: 연결이 끊긴 이유가 기기 키 때문인지 확인 (거절되면 연결 화면으로 바뀜)
+      if (isRemote) api('GET', '/api/mobile').catch(() => {});
       setTimeout(connect, retry);
       retry = Math.min(retry * 2, 10_000);
     };

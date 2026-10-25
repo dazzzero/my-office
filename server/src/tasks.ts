@@ -64,6 +64,8 @@ export interface TaskManagerOptions {
   onChange?: () => void;
   /** 결재가 새로 필요할 때 (알림). 업무에 딸리지 않은 결재(오늘 할 일 묶음)는 t가 null */
   onApproval?: (a: Approval, t: Task | null) => void;
+  /** 업무가 실패로 끝났을 때 (휴대폰 알림) */
+  onFailed?: (t: Task) => void;
   /** 고정 직원 목록 (테스트에서 바꿔 끼움) */
   agentsOf?: (teamPath: string) => { name: string }[];
 }
@@ -96,6 +98,7 @@ export class TaskManager {
   private readonly now: () => number;
   private readonly onChange: () => void;
   private readonly onApproval: (a: Approval, t: Task | null) => void;
+  private readonly onFailed: (t: Task) => void;
   private readonly agentsOf: (teamPath: string) => { name: string }[];
   private live = new Map<number, Live>();
   private pending = new Map<number, PendingApproval>();
@@ -108,6 +111,7 @@ export class TaskManager {
     this.now = o.now ?? Date.now;
     this.onChange = o.onChange ?? (() => {});
     this.onApproval = o.onApproval ?? (() => {});
+    this.onFailed = o.onFailed ?? (() => {});
     this.agentsOf = o.agentsOf ?? listAgents;
     this.recover();
   }
@@ -254,6 +258,7 @@ export class TaskManager {
                 VALUES (NULL, 'terminal', ?, ?, ?, ?, 'pending', ?)`)
       .run(req.sessionId, req.toolName, JSON.stringify(req.input ?? {}), req.reason, this.now());
     const id = Number(lastInsertRowid);
+    this.onApproval(toApproval(this.db.prepare('SELECT * FROM approvals WHERE id = ?').get(id) as Row), null);
     this.onChange();
     return new Promise(resolve => {
       const timer = setTimeout(() => {
@@ -473,6 +478,7 @@ export class TaskManager {
           const status: TaskStatus = this.get(id).status === 'stopped' ? 'stopped' : r.isError ? 'failed' : 'done';
           this.update(id, { status, result: r.text, cost_usd: l.costBase + r.costUsd, ...(r.isError ? { error: r.text } : {}) });
           this.addLog(id, 'result', r.text || '(보고 없음)');
+          if (status === 'failed') this.onFailed(this.get(id));
           // 이어서 지시할 수 있게 잠시 살려 두고, 오래 조용하면 닫는다
           this.clearIdle(l);
           l.idle = setTimeout(() => l.proc.close(), this.config.runner.idleMinutes * 60_000);
@@ -486,6 +492,7 @@ export class TaskManager {
           if (ACTIVE_STATUSES.includes(cur.status) && !l.stopping) {
             this.update(id, { status: 'failed', error: `Claude가 예기치 않게 종료됐습니다 (코드 ${code}). ${stderr.trim().slice(-500)}` });
             this.addLog(id, 'system', `비정상 종료 (코드 ${code})`);
+            this.onFailed(this.get(id));
           }
           this.cancelApprovals(id);
           this.schedule();

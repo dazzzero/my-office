@@ -25,6 +25,9 @@
     "office:stop": "node scripts/office.mjs --stop",
     "autostart:status": "node scripts/autostart.mjs --status",
     "autostart:install": "node scripts/autostart.mjs",
-    "autostart:uninstall": "node scripts/autostart.mjs --uninstall"
+    "autostart:uninstall": "node scripts/autostart.mjs --uninstall",
+    "phone:status": "node scripts/phone.mjs",
+    "phone:serve": "node scripts/phone.mjs --serve",
+    "phone:off": "node scripts/phone.mjs --off"
   }
 }
