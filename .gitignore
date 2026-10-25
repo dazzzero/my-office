@@ -1,0 +1,14 @@
+node_modules/
+data/
+!data/.gitkeep
+prototypes/_shots/
+_ref/
+*.log
+web/dist/
+_downloads/
+# 내 PC 전용: 회사 프로젝트 경로·계획 문서 (공개 저장소에 올리지 않음)
+myoffice.config.json
+docs/PLAN.md
+docs/phase*.md
+회의록/*
+!회의록/.gitkeep

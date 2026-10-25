@@ -1,0 +1,611 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>마이오피스 — 그래픽 시안</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.170.0/build/three.module.js"}}</script>
+<style>
+  :root{--bg:#f5f6f8;--panel:#fff;--line:#e6e8ec;--text:#22262e;--sub:#7a828f;--accent:#f07a2a}
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
+    font:13px/1.45 Pretendard,"Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif}
+  #app{display:grid;grid-template-columns:240px 1fr 290px;height:100vh}
+  aside{background:var(--panel);border-right:1px solid var(--line);overflow:auto;padding:14px}
+  aside#right{border-right:0;border-left:1px solid var(--line)}
+  h4{margin:0 0 8px;font-size:12px;color:var(--sub);font-weight:600;letter-spacing:.02em}
+  h4 small{float:right;font-weight:500;color:#aab0ba}
+  .brand{font-weight:800;font-size:15px;margin-bottom:14px}
+  .brand span{color:var(--accent)}
+  .floor{border:1px solid var(--line);border-radius:10px;padding:9px 10px;margin-bottom:8px;display:flex;gap:9px;align-items:flex-start}
+  .floor .no{background:#eef0f3;color:#556;border-radius:6px;font-weight:700;font-size:11px;padding:3px 6px}
+  .floor.on{border-color:var(--accent);box-shadow:0 0 0 3px #f07a2a1a}
+  .floor.on .no{background:var(--accent);color:#fff}
+  .floor b{display:block;font-size:13px}
+  .floor em{font-style:normal;color:var(--sub);font-size:11px}
+  .sess{list-style:none;margin:6px 0 0;padding:0}
+  .sess li{display:flex;align-items:center;gap:6px;font-size:11.5px;padding:3px 0;color:#444b57}
+  .sess li i{margin-left:auto;font-style:normal;color:#9aa1ac;font-size:10.5px}
+  .dot{width:8px;height:8px;border-radius:50%;flex:none}
+  main{position:relative;display:flex;flex-direction:column;min-width:0}
+  header{display:flex;align-items:center;gap:10px;padding:12px 16px}
+  .card{background:#fff;border:1px solid var(--line);border-radius:10px;padding:7px 12px;display:flex;gap:8px;align-items:center}
+  .card .no{background:var(--accent);color:#fff;border-radius:6px;font-weight:700;font-size:11px;padding:2px 6px}
+  .card em{font-style:normal;color:var(--sub);font-size:11px}
+  .tabs{margin-left:auto;display:flex;gap:4px;background:#fff;border:1px solid var(--line);border-radius:10px;padding:3px}
+  .tabs button{border:0;background:none;padding:6px 10px;border-radius:7px;cursor:pointer;font:inherit;color:#555d69}
+  .tabs button.on{background:#22262e;color:#fff}
+  .live{color:#1f9d55;font-weight:700;font-size:11px;background:#e8f7ee;border-radius:20px;padding:3px 9px}
+  #view{position:relative;flex:1;overflow:hidden}
+  #view canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+  #overlay{position:absolute;inset:0;pointer-events:none}
+  .bubble{position:absolute;left:0;top:0;white-space:nowrap;background:#fff;border:1px solid #dfe2e7;border-radius:9px;
+    padding:3px 8px;font-size:11.5px;box-shadow:0 2px 6px #0000001a;transition:opacity .2s}
+  .bubble:after{content:"";position:absolute;left:50%;bottom:-5px;margin-left:-5px;border:5px solid transparent;border-top-color:#fff;border-bottom:0}
+  .bubble b{font-size:10px;color:#9aa1ac;font-weight:600;margin-right:4px}
+  .bubble.alert{border-color:var(--accent);background:#fff6ef;font-weight:600}
+  .bubble.hide{opacity:0}
+  .tag{position:absolute;left:0;top:0;white-space:nowrap;font-size:10.5px;font-weight:700;color:#fff;border-radius:5px;padding:1px 6px;opacity:.92}
+  .zlabel{position:absolute;left:0;top:0;white-space:nowrap;font-size:11px;color:#6b7380;background:#ffffffcc;border-radius:6px;padding:1px 6px}
+  .zoom{position:absolute;left:14px;bottom:14px;display:flex;flex-direction:column;background:#fff;border:1px solid var(--line);border-radius:9px;overflow:hidden}
+  .zoom button{border:0;background:none;width:30px;height:28px;cursor:pointer;font-size:15px;color:#555}
+  .zoom button+button{border-top:1px solid var(--line)}
+  .note{position:absolute;right:14px;bottom:14px;max-width:340px;background:#22262ee6;color:#fff;border-radius:10px;padding:9px 12px;font-size:11.5px}
+  .note b{color:#ffb27a}
+  .sec{margin-bottom:18px}
+  .path{font-family:Consolas,monospace;font-size:11px;background:#f4f5f7;border-radius:7px;padding:7px 8px;color:#555d69}
+  .people{list-style:none;margin:0;padding:0}
+  .people li{display:flex;gap:8px;align-items:flex-start;padding:7px 0;border-bottom:1px solid #f0f1f4}
+  .people .dot{margin-top:5px}
+  .people b{display:block;font-size:12.5px}
+  .people span{display:block;color:var(--sub);font-size:11px}
+  .chip{display:inline-block;margin-top:3px;font-size:10.5px;background:#f1f3f6;border-radius:5px;padding:1px 6px;color:#4b525d}
+  .chip.alert{background:#fff0e4;color:#c4560c}
+  .log{list-style:none;margin:0;padding:0;font-size:11px}
+  .log li{padding:4px 0;border-bottom:1px dashed #eef0f3;color:#4b525d}
+  .log time{color:#a2a8b2;margin-right:5px;font-family:Consolas,monospace}
+  .legend{display:grid;grid-template-columns:1fr 1fr;gap:4px 8px;font-size:11px;color:#4b525d}
+</style>
+</head>
+<body>
+<div id="app">
+  <aside id="left">
+    <div class="brand">🏢 <span>마이</span>오피스</div>
+    <h4>층별 안내 <small>FLOOR GUIDE</small></h4>
+    <div class="floor"><span class="no">4F</span><div><b>my-office</b><em>마이오피스 본사</em></div></div>
+    <div class="floor on"><span class="no">3F</span><div style="flex:1"><b>shop-frontend</b><em>프론트엔드팀 · 4명 근무 중</em>
+      <ul class="sess" id="sess"></ul></div></div>
+    <div class="floor"><span class="no">2F</span><div><b>erp-api</b><em>API팀 · 퇴근</em></div></div>
+    <div class="floor"><span class="no">1F</span><div><b>data-analysis</b><em>데이터분석팀 · 퇴근</em></div></div>
+  </aside>
+
+  <main>
+    <header>
+      <div class="card"><span class="no">3F</span><b>shop-frontend</b><em>프론트엔드팀</em></div>
+      <span class="live">● LIVE</span>
+      <div class="tabs" id="tabs">
+        <button data-k="a">A · 아이소 3D</button>
+        <button data-k="b">B · 아이소 2D</button>
+        <button data-k="c">C · 탑뷰 픽셀</button>
+      </div>
+    </header>
+    <div id="view">
+      <div id="overlay"></div>
+      <div class="zoom"><button id="zin">+</button><button id="zout">−</button><button id="zreset">⟲</button></div>
+      <div class="note" id="note"></div>
+    </div>
+  </main>
+
+  <aside id="right">
+    <div class="sec"><h4>작업 위치</h4><div class="path">C:\work\shop\frontend</div></div>
+    <div class="sec"><h4>사무실 사람들 <small id="cnt"></small></h4><ul class="people" id="people"></ul></div>
+    <div class="sec"><h4>활동 로그</h4><ul class="log" id="log"></ul></div>
+    <div class="sec"><h4>어디서 무엇을 하나</h4>
+      <div class="legend">
+        <span>📚 자료실 · 읽기/검색</span><span>💻 책상 · 편집/작성</span>
+        <span>🖥️ 서버실 · 명령 실행</span><span>🗣️ 회의실 · 작업 분배</span>
+        <span>🛗 엘리베이터 · 서브에이전트</span><span>☕ 라운지 · 완료/대기</span>
+        <span>✋ 손 들기 · 결재 요청</span><span>🤔 제자리 · 고민 중</span>
+      </div></div>
+  </aside>
+</div>
+
+<script type="module">
+// ===================== 공용: 사무실 데이터 =====================
+const W = 20, H = 14;
+const ZONES = [
+  { id:'floor',   x:0,   y:0,   w:W,   d:H,   c:'#eceef2' },
+  { id:'library', x:0,   y:0,   w:7.2, d:4.2, c:'#e8d9c3', label:'📚 자료실',   lx:0.5,  ly:4.0 },
+  { id:'desk',    x:7.2, y:3.6, w:7.8, d:5.6, c:'#f4f5f8', label:'💻 업무 구역', lx:7.7,  ly:3.9 },
+  { id:'server',  x:15,  y:0,   w:5,   d:4.2, c:'#cdd2da', label:'🖥️ 서버실',   lx:15.4, ly:4.0 },
+  { id:'lounge',  x:0,   y:9.4, w:6.6, d:4.6, c:'#dbe9df', label:'☕ 라운지',   lx:0.5,  ly:13.8 },
+  { id:'meeting', x:8,   y:9.8, w:6.5, d:4.2, c:'#e2e6f3', label:'🗣️ 회의실',  lx:8.5,  ly:13.8 },
+];
+const WINDOWS = [[8, 10], [11, 13]];
+const ELEV = { y0:6, y1:7.6 };
+
+const P = (x, y, w, d, h, c, k = 'box', z = 0, a = 1) => ({ x, y, w, d, h, c, k, z, a });
+const FURN = [];
+const item = (...parts) => FURN.push({ parts });
+for (let i = 0; i < 3; i++) item(P(0.5 + i * 2.1, 0.12, 1.8, 0.5, 2.0, '#a27b56', 'shelf'));
+item(P(2.2, 2.7, 2.6, 0.9, 0.72, '#c99e72'));
+item(P(7.15, 0, 0.08, 4.2, 1.7, '#a9cbe3', 'glass', 0, 0.35));
+const DESK_SPOTS = [];
+for (const y of [4.4, 7.4]) for (const x of [8.2, 10.4, 12.6]) {
+  item(P(x, y, 1.6, 0.8, 0.74, '#f7f5f0'), P(x + 0.45, y + 0.08, 0.7, 0.1, 0.48, '#2d3440', 'monitor', 0.74),
+       P(x + 0.55, y + 1.05, 0.5, 0.5, 0.45, '#5b6575', 'chair'));
+  DESK_SPOTS.push([x + 0.8, y + 1.3]);
+}
+item(P(14.95, 0, 0.08, 4.2, 1.7, '#a9cbe3', 'glass', 0, 0.35));
+for (let i = 0; i < 4; i++) item(P(15.5 + i * 1.1, 0.25, 0.95, 1.0, 2.2, '#363d4a', 'rack'));
+item(P(0.25, 10.2, 0.9, 3.0, 0.45, '#6c8fb8'), P(0.25, 10.2, 0.35, 3.0, 1.0, '#5f80a8'));
+item(P(2.4, 11.0, 0.8, 1.4, 0.42, '#c99e72'));
+item(P(4.6, 9.7, 1.6, 0.6, 1.0, '#d9d4cc'), P(4.8, 9.75, 0.4, 0.4, 0.35, '#2d3440', 'box', 1.0));
+item(P(8, 9.8, 0.08, 4.2, 1.4, '#a9cbe3', 'glass', 0, 0.3));
+item(P(8, 9.75, 6.5, 0.08, 1.4, '#a9cbe3', 'glass', 0, 0.3));
+item(P(9.6, 11.2, 3.2, 1.3, 0.74, '#f7f5f0'));
+for (const [x, y] of [[14.3, 0.5], [7.7, 0.5], [0.6, 8.7], [19.4, 5.0], [19.3, 13.3], [6.2, 13.3]])
+  item(P(x - 0.22, y - 0.22, 0.44, 0.44, 0.42, '#c9a27a', 'pot'), P(x - 0.32, y - 0.32, 0.64, 0.64, 0.7, '#5fa86b', 'leaf', 0.42));
+
+const SPOTS = {
+  library: [[1.4, 1.2], [3.5, 1.2], [5.6, 1.2], [3.5, 3.95]],
+  server:  [[16, 1.8], [17.1, 1.8], [18.2, 1.8], [19.3, 1.8]],
+  lounge:  [[1.75, 10.9], [1.75, 12.4], [5.2, 10.8]],
+  meeting: [[10.4, 10.6], [12.0, 10.6], [10.4, 13.0], [12.0, 13.0]],
+  elevator:[[0.9, 6.8]],
+};
+const ACTS = [
+  { z:'library', tool:'Read',  t:'📖 src/api/client.ts 읽는 중' },
+  { z:'library', tool:'Grep',  t:'🔎 "useAuth" 검색 중' },
+  { z:'library', tool:'Glob',  t:'🗂️ **/*.tsx 찾는 중' },
+  { z:'desk',    tool:'Edit',  t:'⌨️ LoginForm.tsx 수정 중' },
+  { z:'desk',    tool:'Write', t:'📝 README.md 작성 중' },
+  { z:'desk',    tool:'Think', t:'🤔 고민 중...' },
+  { z:'desk',    tool:'Permission', t:'✋ 결재 부탁드립니다', alert:true },
+  { z:'server',  tool:'Bash',  t:'🖥️ npm run test' },
+  { z:'server',  tool:'Bash',  t:'🖥️ git status' },
+  { z:'meeting', tool:'Agent', t:'🗣️ 작업 분배 회의' },
+  { z:'lounge',  tool:'Stop',  t:'☕ 완료! 대기 중' },
+  { z:'elevator',tool:'Subagent', t:'🛗 서브에이전트 호출' },
+];
+
+// ===================== 경로 찾기 (0.5 격자 A*) =====================
+const CS = 0.5, GW = W / CS, GH = H / CS;
+const blocked = new Uint8Array(GW * GH);
+for (const it of FURN) for (const p of it.parts) {
+  if (['chair', 'leaf', 'monitor'].includes(p.k)) continue;
+  for (let j = 0; j < GH; j++) for (let i = 0; i < GW; i++) {
+    const cx = (i + .5) * CS, cy = (j + .5) * CS;
+    if (cx > p.x - .26 && cx < p.x + p.w + .26 && cy > p.y - .26 && cy < p.y + p.d + .26) blocked[j * GW + i] = 1;
+  }
+}
+const ci = x => Math.min(GW - 1, Math.max(0, Math.floor(x / CS)));
+const cj = y => Math.min(GH - 1, Math.max(0, Math.floor(y / CS)));
+const DIRS = [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
+function findPath(sx, sy, tx, ty) {
+  const s = cj(sy) * GW + ci(sx), g = cj(ty) * GW + ci(tx);
+  const free = n => !blocked[n] || n === s || n === g;
+  const gS = new Float32Array(GW * GH).fill(Infinity), came = new Int32Array(GW * GH).fill(-1), closed = new Uint8Array(GW * GH);
+  const h = n => Math.hypot(n % GW - g % GW, ((n / GW) | 0) - ((g / GW) | 0));
+  const open = [s]; gS[s] = 0;
+  while (open.length) {
+    let bi = 0;
+    for (let k = 1; k < open.length; k++) if (gS[open[k]] + h(open[k]) < gS[open[bi]] + h(open[bi])) bi = k;
+    const n = open.splice(bi, 1)[0];
+    if (n === g) break;
+    if (closed[n]) continue;
+    closed[n] = 1;
+    const x = n % GW, y = (n / GW) | 0;
+    for (const [dx, dy] of DIRS) {
+      const nx = x + dx, ny = y + dy;
+      if (nx < 0 || ny < 0 || nx >= GW || ny >= GH) continue;
+      const m = ny * GW + nx;
+      if (!free(m) || closed[m]) continue;
+      if (dx && dy && (!free(y * GW + nx) || !free(ny * GW + x))) continue;
+      const ng = gS[n] + (dx && dy ? 1.414 : 1);
+      if (ng < gS[m]) { gS[m] = ng; came[m] = n; open.push(m); }
+    }
+  }
+  if (s === g || came[g] < 0) return [[tx, ty]];
+  const pts = [];
+  for (let n = g; n !== s && n >= 0; n = came[n]) pts.push([(n % GW + .5) * CS, (((n / GW) | 0) + .5) * CS]);
+  pts.reverse(); pts[pts.length - 1] = [tx, ty];
+  const clear = (a, b) => {
+    const n = Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / 0.1);
+    for (let k = 1; k < n; k++) {
+      const c = cj(a[1] + (b[1] - a[1]) * k / n) * GW + ci(a[0] + (b[0] - a[0]) * k / n);
+      if (blocked[c] && c !== s && c !== g) return false;
+    }
+    return true;
+  };
+  const out = []; let cur = [sx, sy];
+  for (let i = 0; i < pts.length;) {
+    let k = pts.length - 1;
+    while (k > i && !clear(cur, pts[k])) k--;
+    out.push(pts[k]); cur = pts[k]; i = k + 1;
+  }
+  return out;
+}
+
+// ===================== 시뮬레이션 (실제 버전에선 훅 이벤트로 대체) =====================
+const AGENTS = [
+  { name:'Claude', role:'메인 세션',   c:'#e8833a' },
+  { name:'T-013',  role:'코드 탐색',   c:'#4a7bd0' },
+  { name:'T-030',  role:'테스트 작성', c:'#3fa36b' },
+  { name:'T-041',  role:'코드 리뷰',   c:'#9b59b6' },
+].map((a, i) => ({ ...a, i, x: DESK_SPOTS[i][0], y: DESK_SPOTS[i][1], path: [], state: 'work',
+  timer: 0.5 + i * 1.2, act: { tool:'Start', t:'☀️ 출근 완료' }, phase: 0, since: Date.now() }));
+
+function nextAct(a) {
+  let act;
+  do act = ACTS[(Math.random() * ACTS.length) | 0]; while (act === a.act || (act.z === 'elevator' && Math.random() < .6));
+  let spot;
+  if (act.z === 'desk') spot = DESK_SPOTS[a.i];
+  else {
+    const taken = AGENTS.filter(o => o !== a).map(o => o.path.length ? o.path[o.path.length - 1] : [o.x, o.y]);
+    const cand = SPOTS[act.z].filter(s => taken.every(t => Math.hypot(t[0] - s[0], t[1] - s[1]) > .3));
+    spot = (cand.length ? cand : SPOTS[act.z])[(Math.random() * (cand.length || SPOTS[act.z].length)) | 0];
+  }
+  a.act = act; a.state = 'walk';
+  a.path = findPath(a.x, a.y, spot[0], spot[1]);
+  refreshPanels();
+}
+function update(dt) {
+  for (const a of AGENTS) {
+    if (a.state === 'walk') {
+      a.phase += dt * 12;
+      let step = 2.6 * dt;
+      while (step > 0 && a.path.length) {
+        const [tx, ty] = a.path[0], dx = tx - a.x, dy = ty - a.y, L = Math.hypot(dx, dy);
+        if (L <= step) { a.x = tx; a.y = ty; a.path.shift(); step -= L; }
+        else { a.x += dx / L * step; a.y += dy / L * step; step = 0; }
+      }
+      if (!a.path.length) { a.state = 'work'; a.timer = 3 + Math.random() * 4; a.since = Date.now(); addLog(a); refreshPanels(); }
+    } else if ((a.timer -= dt) <= 0) nextAct(a);
+  }
+}
+
+// ===================== 패널 (사람들 / 로그 / 층 세션) =====================
+const $ = id => document.getElementById(id);
+const hhmmss = () => new Date().toTimeString().slice(0, 8);
+function addLog(a) {
+  const li = document.createElement('li');
+  li.innerHTML = `<time>${hhmmss()}</time><b style="color:${a.c}">${a.name}</b> ${a.act.tool} · ${a.act.t}`;
+  $('log').prepend(li);
+  while ($('log').children.length > 14) $('log').lastChild.remove();
+}
+function refreshPanels() {
+  $('cnt').textContent = `${AGENTS.length}명`;
+  $('people').innerHTML = AGENTS.map(a => `<li><span class="dot" style="background:${a.c}"></span><div>
+    <b>${a.name}</b><span>${a.role}</span>
+    <span class="chip ${a.act.alert && a.state === 'work' ? 'alert' : ''}">${a.state === 'walk' ? '🚶 이동 중' : a.act.t}</span></div></li>`).join('');
+  $('sess').innerHTML = AGENTS.map(a => `<li><span class="dot" style="background:${a.c}"></span>${a.name}
+    <i>${a.state === 'walk' ? '이동' : a.act.tool}</i></li>`).join('');
+}
+
+// ===================== 오버레이 (말풍선 / 이름표 / 구역 라벨) =====================
+const overlay = $('overlay');
+const els = AGENTS.map(a => {
+  const b = document.createElement('div'); b.className = 'bubble';
+  const t = document.createElement('div'); t.className = 'tag'; t.style.background = a.c; t.textContent = a.name;
+  overlay.append(b, t); return { b, t };
+});
+const zlabels = ZONES.filter(z => z.label).map(z => {
+  const d = document.createElement('div'); d.className = 'zlabel'; d.textContent = z.label; overlay.append(d); return { z, d };
+});
+function updateOverlay(r) {
+  for (const { z, d } of zlabels) { const [x, y] = r.project(z.lx, z.ly, 0); d.style.transform = `translate(${x}px,${y}px) translate(0,-100%)`; }
+  AGENTS.forEach((a, i) => {
+    const { b, t } = els[i];
+    const [hx, hy] = r.project(a.x, a.y, r.headZ);
+    const [fx, fy] = r.project(a.x, a.y, 0);
+    b.style.transform = `translate(${hx}px,${hy - 8}px) translate(-50%,-100%)`;
+    t.style.transform = `translate(${fx}px,${fy + 4}px) translate(-50%,0)`;
+    const html = `<b>${a.act.tool}</b>${a.act.t}`;
+    if (b._html !== html) { b.innerHTML = html; b._html = html; }
+    b.classList.toggle('hide', a.state === 'walk');
+    b.classList.toggle('alert', !!a.act.alert);
+  });
+}
+
+// ===================== 색 유틸 =====================
+function shade(hex, amt) {
+  const n = parseInt(hex.slice(1), 16); let r = n >> 16, g = (n >> 8) & 255, b = n & 255;
+  const t = amt < 0 ? 0 : 255, p = Math.abs(amt);
+  r = Math.round((t - r) * p + r); g = Math.round((t - g) * p + g); b = Math.round((t - b) * p + b);
+  return `rgb(${r},${g},${b})`;
+}
+const zoneAt = (x, y) => { let c = ZONES[0].c; for (const z of ZONES) if (x >= z.x && x < z.x + z.w && y >= z.y && y < z.y + z.d) c = z.c; return c; };
+const BOOKS = ['#c0504d', '#4f81bd', '#9bbb59', '#f2c14e', '#8064a2', '#4bacc6', '#e07b39', '#6d7b8d'];
+const bookColor = (i, j, k) => BOOKS[(i * 7 + j * 5 + k * 3) % BOOKS.length];
+let zoom = 1;
+
+// ===================== 렌더러 A: 아이소메트릭 3D (Three.js) =====================
+async function createThree() {
+  const THREE = await import('three');
+  const r = new THREE.WebGLRenderer({ antialias: true });
+  r.setPixelRatio(Math.min(devicePixelRatio, 2));
+  r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFSoftShadowMap;
+  const scene = new THREE.Scene(); scene.background = new THREE.Color('#eef0f4');
+  const cam = new THREE.OrthographicCamera(-10, 10, 10, -10, 0.1, 300);
+  const C = new THREE.Vector3(W / 2, 0, H / 2);
+  cam.position.set(C.x + 40, 34, C.z + 40); cam.lookAt(C);
+
+  scene.add(new THREE.HemisphereLight('#ffffff', '#b9c0cc', 1.9));
+  const sun = new THREE.DirectionalLight('#fff7ee', 2.0);
+  sun.position.set(C.x + 8, 25, C.z + 16); sun.target.position.copy(C);
+  sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
+  Object.assign(sun.shadow.camera, { left: -18, right: 18, top: 18, bottom: -18, near: 1, far: 80 });
+  sun.shadow.bias = -0.0005; sun.shadow.normalBias = 0.02;
+  scene.add(sun, sun.target);
+
+  const mat = (c, a = 1, e) => new THREE.MeshStandardMaterial({ color: c, roughness: .85, transparent: a < 1, opacity: a, ...(e ? { emissive: e } : {}) });
+  const box = (x, y, z, w, h, d, m, shadow = true) => {
+    const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m);
+    o.position.set(x + w / 2, z + h / 2, y + d / 2); o.castShadow = shadow; o.receiveShadow = true; scene.add(o); return o;
+  };
+  ZONES.forEach((z, k) => box(z.x, z.y, -0.1 + k * 0.003, z.w, 0.1, z.d, mat(z.c), false));
+  box(0, -0.15, 0, W, 2.6, 0.15, mat('#f7f7f9'));
+  box(-0.15, 0, 0, 0.15, 2.6, H, mat('#eceef1'));
+  for (const [x0, x1] of WINDOWS) box(x0, 0, 1.0, x1 - x0, 1.1, 0.03, mat('#cfe3f3', 1, '#4a6a85'), false);
+  box(0, ELEV.y0, 0, 0.04, 2.3, ELEV.y1 - ELEV.y0, mat('#a7b0bc'), false);
+  box(0.04, (ELEV.y0 + ELEV.y1) / 2 - 0.01, 0, 0.01, 2.3, 0.02, mat('#7d8794'), false);
+
+  const leds = [];
+  FURN.forEach((it, fi) => it.parts.forEach(p => {
+    if (p.k === 'leaf') {
+      const m = new THREE.Mesh(new THREE.SphereGeometry(p.w / 2, 14, 10), mat(p.c));
+      m.scale.y = 1.25; m.position.set(p.x + p.w / 2, p.z + p.h / 2 + .05, p.y + p.d / 2); m.castShadow = true; scene.add(m); return;
+    }
+    box(p.x, p.y, p.z, p.w, p.h, p.d, mat(p.c, p.a), p.k !== 'glass');
+    if (p.k === 'shelf') [0.15, 0.8, 1.45].forEach((lz, j) => { for (let k = 0; k < 8; k++)
+      box(p.x + 0.12 + k * 0.2, p.y + p.d - 0.12, lz, 0.15, 0.32 + ((k * 13 + j * 7) % 5) * 0.03, 0.14, mat(bookColor(fi, j, k)), false); });
+    if (p.k === 'rack') for (let j = 0; j < 6; j++) for (let k = 0; k < 3; k++) {
+      const m = mat('#1c2129', 1, k === 2 && (j + fi) % 3 === 0 ? '#ffb020' : '#35d07f');
+      box(p.x + 0.15 + k * 0.12, p.y + p.d, 0.3 + j * 0.3, 0.05, 0.04, 0.02, m, false); leds.push(m);
+    }
+    if (p.k === 'monitor') box(p.x + 0.04, p.y + p.d, p.z + 0.06, p.w - 0.08, p.h - 0.12, 0.01, mat('#9cc4ff', 1, '#3a6fd0'), false);
+  }));
+
+  const skin = mat('#f2d3b5'), hair = mat('#4a3a2f');
+  const meshes = AGENTS.map(a => {
+    const g = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.25, 0.72, 18), mat(a.c)); body.position.y = 0.41;
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.21, 18, 14), skin); head.position.y = 1.0;
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.215, 18, 10, 0, Math.PI * 2, 0, Math.PI / 2.2), hair); cap.position.y = 1.02;
+    for (const o of [body, head, cap]) { o.castShadow = true; g.add(o); }
+    scene.add(g); return g;
+  });
+
+  const v = new THREE.Vector3();
+  let vw = 1, vh = 1;
+  return {
+    el: r.domElement, headZ: 1.35,
+    resize(w, h) { vw = w; vh = h; r.setSize(w, h, false); const half = 9, asp = w / h;
+      Object.assign(cam, { left: -half * asp, right: half * asp, top: half, bottom: -half, zoom }); cam.updateProjectionMatrix(); },
+    draw(t) {
+      AGENTS.forEach((a, i) => meshes[i].position.set(a.x, a.state === 'walk' ? Math.abs(Math.sin(a.phase)) * 0.07 : 0, a.y));
+      leds.forEach((m, i) => m.emissiveIntensity = Math.sin(t * 3 + i * 1.7) > -0.3 ? 1 : 0.15);
+      r.render(scene, cam);
+    },
+    project(x, y, z) { v.set(x, z, y).project(cam); return [(v.x + 1) / 2 * vw, (1 - v.y) / 2 * vh]; },
+  };
+}
+
+// ===================== 렌더러 B: 아이소메트릭 2D (Canvas) =====================
+function createIso2D() {
+  const cv = document.createElement('canvas'), ctx = cv.getContext('2d');
+  let vw = 1, vh = 1, TW = 40, TH = 20, HU = 25, ox = 0, oy = 0;
+  const iso = (x, y, z = 0) => [ox + (x - y) * TW / 2, oy + (x + y) * TH / 2 - z * HU];
+  const poly = (pts, fill, stroke) => {
+    ctx.beginPath(); pts.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); ctx.closePath();
+    ctx.fillStyle = fill; ctx.fill(); if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = 1; ctx.stroke(); }
+  };
+  const quadY = (x0, x1, y, z0, z1, c) => poly([iso(x0, y, z0), iso(x1, y, z0), iso(x1, y, z1), iso(x0, y, z1)], c);
+  const quadX = (x, y0, y1, z0, z1, c) => poly([iso(x, y0, z0), iso(x, y1, z0), iso(x, y1, z1), iso(x, y0, z1)], c);
+  function drawBox(p) {
+    const { x, y, z, w, d, h, c } = p, e = 'rgba(0,0,0,.08)';
+    ctx.globalAlpha = p.a;
+    poly([iso(x, y + d, z), iso(x + w, y + d, z), iso(x + w, y + d, z + h), iso(x, y + d, z + h)], shade(c, -0.06), e);
+    poly([iso(x + w, y, z), iso(x + w, y + d, z), iso(x + w, y + d, z + h), iso(x + w, y, z + h)], shade(c, -0.2), e);
+    poly([iso(x, y, z + h), iso(x + w, y, z + h), iso(x + w, y + d, z + h), iso(x, y + d, z + h)], shade(c, 0.12), e);
+    ctx.globalAlpha = 1;
+  }
+  function drawPart(p, fi, t) {
+    if (p.k === 'leaf') {
+      const [cx, cy] = iso(p.x + p.w / 2, p.y + p.d / 2, p.z + p.h / 2), r = p.w * TW * 0.42;
+      ctx.fillStyle = shade(p.c, -0.1); ctx.beginPath(); ctx.ellipse(cx, cy, r, r * 1.15, 0, 0, 7); ctx.fill();
+      ctx.fillStyle = shade(p.c, 0.15); ctx.beginPath(); ctx.ellipse(cx - r * .25, cy - r * .3, r * .55, r * .6, 0, 0, 7); ctx.fill();
+      return;
+    }
+    drawBox(p);
+    const yf = p.y + p.d;
+    if (p.k === 'shelf') [0.15, 0.8, 1.45].forEach((lz, j) => { for (let k = 0; k < 8; k++)
+      quadY(p.x + 0.12 + k * 0.2, p.x + 0.27 + k * 0.2, yf, lz, lz + 0.32 + ((k * 13 + j * 7) % 5) * 0.03, bookColor(fi, j, k)); });
+    if (p.k === 'rack') for (let j = 0; j < 6; j++) for (let k = 0; k < 3; k++) {
+      const on = Math.sin(t * 3 + (fi * 18 + j * 3 + k) * 1.7) > -0.3;
+      quadY(p.x + 0.15 + k * 0.12, p.x + 0.2 + k * 0.12, yf, 0.3 + j * 0.3, 0.34 + j * 0.3,
+        on ? (k === 2 && (j + fi) % 3 === 0 ? '#ffb020' : '#35d07f') : '#1c2129');
+    }
+    if (p.k === 'monitor') quadY(p.x + 0.04, p.x + p.w - 0.04, yf, p.z + 0.06, p.z + p.h - 0.06, '#9cc4ff');
+  }
+  function drawAgent(a) {
+    const bob = a.state === 'walk' ? Math.abs(Math.sin(a.phase)) * 0.07 : 0;
+    const [sx, sy] = iso(a.x, a.y, 0), [fx, fy] = iso(a.x, a.y, bob);
+    ctx.fillStyle = 'rgba(0,0,0,.16)'; ctx.beginPath(); ctx.ellipse(sx, sy, TW * .17, TW * .085, 0, 0, 7); ctx.fill();
+    const bw = TW * 0.28, top = fy - HU * 0.82;
+    ctx.fillStyle = a.c; ctx.beginPath(); ctx.roundRect(fx - bw / 2, top, bw, HU * 0.8, [bw / 2, bw / 2, 4, 4]); ctx.fill();
+    ctx.fillStyle = shade(a.c, -0.18); ctx.fillRect(fx + bw * 0.15, top + HU * 0.2, bw * 0.35, HU * 0.55);
+    const hr = TW * 0.13, hy = fy - HU * 1.02;
+    ctx.fillStyle = '#f2d3b5'; ctx.beginPath(); ctx.arc(fx, hy, hr, 0, 7); ctx.fill();
+    ctx.fillStyle = '#4a3a2f'; ctx.beginPath(); ctx.arc(fx, hy - hr * .1, hr * 1.02, Math.PI * 1.05, Math.PI * 1.95); ctx.fill();
+  }
+  return {
+    el: cv, headZ: 1.35,
+    resize(w, h) {
+      vw = w; vh = h; cv.width = w * devicePixelRatio; cv.height = h * devicePixelRatio;
+      TW = Math.min(w * 0.92 * 2 / (W + H), h * 0.88 / ((W + H) / 4 + 2.6 * 0.62)) * zoom; TH = TW / 2; HU = TW * 0.62;
+      ox = w / 2 - (W - H) * TW / 4;
+      const top = -2.6 * HU, bottom = (W + H) * TH / 2; oy = h / 2 - (top + bottom) / 2;
+    },
+    draw(t) {
+      ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+      ctx.fillStyle = '#eef0f4'; ctx.fillRect(0, 0, vw, vh);
+      quadY(0, W, H, -0.25, 0, '#d5d9e0'); quadX(W, 0, H, -0.25, 0, '#c6cbd3');
+      for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) {
+        const c = zoneAt(i + .5, j + .5);
+        poly([iso(i, j), iso(i + 1, j), iso(i + 1, j + 1), iso(i, j + 1)], (i + j) % 2 ? c : shade(c, -0.025));
+      }
+      quadY(0, W, 0, 0, 2.6, '#f7f7f9'); quadX(0, 0, H, 0, 2.6, '#e6e9ee');
+      poly([iso(0, 0, 2.6), iso(W, 0, 2.6), iso(W, -0.15, 2.6), iso(-0.15, -0.15, 2.6), iso(-0.15, H, 2.6), iso(0, H, 2.6)], '#cfd4db');
+      for (const [x0, x1] of WINDOWS) { quadY(x0, x1, 0, 1.0, 2.1, '#cfe3f3'); quadY((x0 + x1) / 2 - .02, (x0 + x1) / 2 + .02, 0, 1.0, 2.1, '#aebfcd'); }
+      quadX(0, ELEV.y0, ELEV.y1, 0, 2.3, '#a7b0bc'); quadX(0, (ELEV.y0 + ELEV.y1) / 2 - .02, (ELEV.y0 + ELEV.y1) / 2 + .02, 0, 2.3, '#7d8794');
+      const list = FURN.map((it, fi) => { const p = it.parts[0]; return { k: p.x + p.w / 2 + p.y + p.d / 2, f: () => it.parts.forEach(q => drawPart(q, fi, t)) }; })
+        .concat(AGENTS.map(a => ({ k: a.x + a.y, f: () => drawAgent(a) })));
+      list.sort((p, q) => p.k - q.k).forEach(d => d.f());
+    },
+    project(x, y, z) { return iso(x, y, z); },
+  };
+}
+
+// ===================== 렌더러 C: 탑뷰 픽셀아트 (Canvas) =====================
+function createPixel() {
+  const T = 16, WALL = 30, LW = W * T, LH = H * T + WALL;
+  const bg = document.createElement('canvas'); bg.width = LW; bg.height = LH;
+  const off = document.createElement('canvas'); off.width = LW; off.height = LH;
+  const o = off.getContext('2d'), b = bg.getContext('2d');
+  const cv = document.createElement('canvas'), ctx = cv.getContext('2d');
+  let vw = 1, vh = 1, s = 1, ox = 0, oy = 0;
+  const R = (g, c, x, y, w, h) => { g.fillStyle = c; g.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h)); };
+
+  for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) {
+    const c = zoneAt(i + .5, j + .5), x = i * T, y = WALL + j * T;
+    R(b, (i + j) % 2 ? c : shade(c, -0.03), x, y, T, T);
+    if (c === '#e8d9c3') for (let k = 3; k < T; k += 5) R(b, shade(c, -0.08), x, y + k, T, 1);
+    else if (c === '#dbe9df') { for (let k = 2; k < T; k += 4) for (let m = 2; m < T; m += 4) R(b, shade(c, -0.07), x + m + (k % 8 ? 2 : 0), y + k, 1, 1); }
+    else { R(b, shade(c, -0.07), x, y, T, 1); R(b, shade(c, -0.07), x, y, 1, T); }
+  }
+  R(b, '#e4e8ee', 0, 0, LW, WALL); R(b, '#8f99a6', 0, 0, LW, 4); R(b, '#c3c9d2', 0, WALL - 3, LW, 3);
+  for (const [x0, x1] of WINDOWS) {
+    R(b, '#8c98a8', x0 * T + 2, 7, (x1 - x0) * T - 4, 17); R(b, '#bfe0f5', x0 * T + 3, 8, (x1 - x0) * T - 6, 15);
+    R(b, '#8c98a8', (x0 + x1) / 2 * T, 8, 1, 15); R(b, '#e6f4fd', x0 * T + 6, 10, 6, 1); R(b, '#e6f4fd', x0 * T + 6, 12, 3, 1);
+  }
+  R(b, '#8f99a6', 0, 0, 3, LH);
+  R(b, '#7d8794', 3, WALL + ELEV.y0 * T, 5, (ELEV.y1 - ELEV.y0) * T); R(b, '#b8c0ca', 4, WALL + ELEV.y0 * T + 1, 3, (ELEV.y1 - ELEV.y0) * T - 2);
+  R(b, '#7d8794', 4, WALL + (ELEV.y0 + ELEV.y1) / 2 * T, 3, 1);
+
+  function part(p, fi, t) {
+    const x = Math.round(p.x * T), w = Math.max(1, Math.round(p.w * T));
+    const top = Math.round(WALL + p.y * T - (p.z + p.h) * T * 0.5), dd = Math.max(1, Math.round(p.d * T)), hf = Math.max(1, Math.round(p.h * T * 0.5));
+    if (p.k === 'leaf') {
+      const cx = x + w / 2, cy = top + dd / 2, r = w / 2;
+      for (let yy = -r; yy <= r; yy++) for (let xx = -r; xx <= r; xx++) if (xx * xx + yy * yy <= r * r)
+        R(o, xx + yy < -r * 0.5 ? shade(p.c, 0.18) : (xx + yy > r * 0.6 ? shade(p.c, -0.15) : p.c), cx + xx, cy + yy - 2, 1, 1);
+      return;
+    }
+    o.globalAlpha = p.a;
+    R(o, shade(p.c, 0.1), x, top, w, dd); R(o, shade(p.c, -0.12), x, top + dd, w, hf);
+    o.globalAlpha = p.a * 0.5;
+    R(o, '#20242c', x, top, w, 1); R(o, '#20242c', x, top + dd + hf - 1, w, 1); R(o, '#20242c', x, top, 1, dd + hf); R(o, '#20242c', x + w - 1, top, 1, dd + hf);
+    o.globalAlpha = 1;
+    const fy = top + dd;
+    if (p.k === 'shelf') for (let j = 0; j < 3; j++) for (let k = 0; k < 9; k++)
+      R(o, bookColor(fi, j, k), x + 2 + k * 3, fy + 2 + j * 5, 2, 4 - ((k + j) % 2));
+    if (p.k === 'rack') for (let j = 0; j < 5; j++) for (let k = 0; k < 3; k++) {
+      const on = Math.sin(t * 3 + (fi * 18 + j * 3 + k) * 1.7) > -0.3;
+      R(o, on ? (k === 2 && (j + fi) % 3 === 0 ? '#ffb020' : '#35d07f') : '#1c2129', x + 3 + k * 3, fy + 2 + j * 3, 1, 1);
+    }
+    if (p.k === 'monitor') R(o, '#9cc4ff', x + 1, fy, w - 2, hf - 1);
+  }
+  function agent(a) {
+    const fx = Math.round(a.x * T), fy = Math.round(WALL + a.y * T), walk = a.state === 'walk', st = walk && Math.sin(a.phase) > 0;
+    const bob = walk && st ? 1 : 0;
+    R(o, 'rgba(0,0,0,.2)', fx - 5, fy - 1, 10, 2);
+    R(o, '#3b3f4a', fx - 3, fy - 5 + (walk && st ? 1 : 0), 2, 4); R(o, '#3b3f4a', fx + 1, fy - 5 + (walk && !st ? 1 : 0), 2, 4);
+    R(o, a.c, fx - 4, fy - 12 - bob, 8, 7); R(o, shade(a.c, -0.2), fx - 4, fy - 6 - bob, 8, 1);
+    R(o, shade(a.c, -0.15), fx - 5, fy - 11 - bob, 1, 5); R(o, shade(a.c, -0.15), fx + 4, fy - 11 - bob, 1, 5);
+    R(o, '#f2d3b5', fx - 4, fy - 19 - bob, 8, 7); R(o, '#4a3a2f', fx - 4, fy - 20 - bob, 8, 3);
+    R(o, '#4a3a2f', fx - 4, fy - 18 - bob, 1, 3); R(o, '#4a3a2f', fx + 3, fy - 18 - bob, 1, 3);
+    R(o, '#222', fx - 2, fy - 15 - bob, 1, 1); R(o, '#222', fx + 1, fy - 15 - bob, 1, 1);
+  }
+  return {
+    el: cv, headZ: 2.6,
+    resize(w, h) {
+      vw = w; vh = h; cv.width = w * devicePixelRatio; cv.height = h * devicePixelRatio;
+      s = Math.max(1, Math.min(vw * .95 / LW, vh * .95 / LH) * zoom);
+      s = s >= 1 ? Math.floor(s * 2) / 2 : s;
+      ox = Math.round((vw - LW * s) / 2); oy = Math.round((vh - LH * s) / 2);
+    },
+    draw(t) {
+      o.drawImage(bg, 0, 0);
+      const list = FURN.map((it, fi) => { const p = it.parts[0]; return { k: p.y + p.d, f: () => it.parts.forEach(q => part(q, fi, t)) }; })
+        .concat(AGENTS.map(a => ({ k: a.y, f: () => agent(a) })));
+      list.sort((p, q) => p.k - q.k).forEach(d => d.f());
+      ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+      ctx.fillStyle = '#eef0f4'; ctx.fillRect(0, 0, vw, vh);
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(off, ox, oy, LW * s, LH * s);
+    },
+    project(x, y, z) { return [ox + x * T * s, oy + (WALL + y * T - z * T * 0.5) * s]; },
+  };
+}
+
+// ===================== 전환 / 루프 =====================
+const NOTES = {
+  a: '<b>A · 아이소메트릭 3D</b> — 레퍼런스(cowboy76)와 같은 계열. 실제 구현은 Kenney 무료 3D 가구 에셋으로 교체해서 훨씬 디테일해집니다. 그림자/조명 자연스러움 최고, 구현 난이도 중상.',
+  b: '<b>B · 아이소메트릭 2D</b> — 같은 시점을 2D 스프라이트로. 에셋 구하기 쉽고(아이소 타일팩) 가볍습니다. 3D보다 정적인 느낌, 구현 난이도 중.',
+  c: '<b>C · 탑뷰 픽셀아트</b> — 레트로 RPG 느낌. 가장 빠르게 만들 수 있고 귀여움. 정보 밀도·고급스러움은 낮음, 구현 난이도 하.',
+};
+const view = $('view'), makers = { a: createThree, b: createIso2D, c: createPixel }, cache = {};
+let cur = null, curKey = null;
+async function setStyle(k) {
+  if (k === curKey) return;
+  curKey = k;
+  document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.k === k));
+  $('note').innerHTML = NOTES[k];
+  try { cache[k] ??= await makers[k](); }
+  catch (e) { $('note').innerHTML = `<b>로드 실패</b> — ${k === 'a' ? 'Three.js CDN에 접속할 수 없습니다(인터넷 필요).' : e.message}`; return; }
+  if (curKey !== k) return;
+  if (cur) cur.el.remove();
+  cur = cache[k]; view.prepend(cur.el); resize();
+  location.hash = k;
+}
+function resize() { if (cur) cur.resize(view.clientWidth, view.clientHeight); }
+new ResizeObserver(resize).observe(view);
+document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => setStyle(b.dataset.k));
+addEventListener('keydown', e => ({ 1: 'a', 2: 'b', 3: 'c' })[e.key] && setStyle({ 1: 'a', 2: 'b', 3: 'c' }[e.key]));
+const setZoom = z => { zoom = Math.min(2.5, Math.max(0.6, z)); resize(); };
+view.addEventListener('wheel', e => { e.preventDefault(); setZoom(zoom * (e.deltaY < 0 ? 1.1 : 1 / 1.1)); }, { passive: false });
+$('zin').onclick = () => setZoom(zoom * 1.2); $('zout').onclick = () => setZoom(zoom / 1.2); $('zreset').onclick = () => setZoom(1);
+
+refreshPanels();
+setInterval(() => update(0.03), 30);
+function loop(now) {
+  if (cur) { cur.draw(now / 1000); updateOverlay(cur); }
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+if (location.hash === '#bench') runBench(); else setStyle((location.hash.slice(1) || 'a'));
+
+// ===================== 벤치마크 (#bench): 렌더러별 프레임당 그리기 시간 =====================
+async function runBench() {
+  const out = [];
+  for (const k of ['a', 'b', 'c']) {
+    await setStyle(k);
+    const r = cache[k], gl = r.el.getContext('webgl2') || r.el.getContext('webgl');
+    const sync = gl ? () => gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4)) : () => r.el.getContext('2d').getImageData(0, 0, 1, 1);
+    for (let i = 0; i < 30; i++) { update(0.03); r.draw(i / 30); updateOverlay(r); sync(); }
+    const N = 200, t0 = performance.now();
+    for (let i = 0; i < N; i++) { update(0.03); r.draw(i / 30); updateOverlay(r); sync(); }
+    const ms = (performance.now() - t0) / N;
+    const info = gl && gl.getExtension('WEBGL_debug_renderer_info');
+    out.push(`${k}: ${ms.toFixed(2)} ms/frame` + (info ? ` [${gl.getParameter(info.UNMASKED_RENDERER_WEBGL)}]` : ''));
+  }
+  out.push(`canvas ${view.clientWidth}x${view.clientHeight} @dpr ${devicePixelRatio}`);
+  const pre = document.createElement('pre'); pre.id = 'bench'; pre.textContent = out.join('\n');
+  pre.style.cssText = 'position:fixed;left:250px;top:70px;background:#000c;color:#0f0;padding:12px;z-index:9;font-size:13px';
+  document.body.append(pre);
+}
+</script>
+</body>
+</html>

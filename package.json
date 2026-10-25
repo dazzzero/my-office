@@ -1,0 +1,27 @@
+{
+  "name": "my-office",
+  "private": true,
+  "type": "module",
+  "description": "마이오피스 — Claude Code 에이전트들이 일하는 사무실",
+  "workspaces": [
+    "server",
+    "web"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "server": "node --disable-warning=ExperimentalWarning server/src/index.ts",
+    "dev": "node --watch --disable-warning=ExperimentalWarning server/src/index.ts",
+    "test": "node --disable-warning=ExperimentalWarning --test \"server/test/*.test.ts\" \"web/test/*.test.ts\"",
+    "typecheck": "tsc -p server && tsc -p web",
+    "build": "cd web && vite build",
+    "hooks:status": "node hooks/install.mjs --status",
+    "hooks:install": "node hooks/install.mjs",
+    "hooks:uninstall": "node hooks/uninstall.mjs",
+    "rules:sync": "node scripts/sync-rules.mjs",
+    "demo": "node scripts/demo.mjs",
+    "office": "node scripts/office.mjs",
+    "office:stop": "node scripts/office.mjs --stop"
+  }
+}
