@@ -10,7 +10,7 @@ import { Store } from '../src/db.ts';
 
 const dir = mkdtempSync(join(tmpdir(), 'myoffice-test-'));
 const store = new Store(join(dir, 'test.db'));
-const { app, office } = await buildApp({ config: loadConfig(EXAMPLE_CONFIG_FILE), store, token: 'T' });
+const { app, office, tasks } = await buildApp({ config: loadConfig(EXAMPLE_CONFIG_FILE), store, token: 'T' });
 after(async () => { await app.close(); store.close(); rmSync(dir, { recursive: true, force: true }); });
 
 const hook = (body: object, token = 'T') =>
@@ -76,6 +76,31 @@ test('lastPromptAt: 세션의 마지막 지시 시각', async () => {
   const first = store.lastPromptAt('sess-p');
   assert.ok(first);
   assert.equal(store.lastPromptAt('nobody'), undefined);
+});
+
+test('결재함 토글: 켜면 Paseo·터미널 권한 요청을 결재함에서 받아 결정을 돌려주고, 끄면 바로 통과', async () => {
+  const req = { ...base, session_id: 'paseo-1', hook_event_name: 'PermissionRequest', tool_name: 'Bash', tool_input: { command: 'npm publish' } };
+  tasks.terminalMode = 'office';
+  const pending = hook(req);
+  let a;
+  for (let i = 0; i < 50 && !a; i++) {
+    await new Promise(r => setImmediate(r));
+    a = tasks.pendingApprovals().find(x => x.kind === 'terminal' && x.sessionId === 'paseo-1');
+  }
+  assert.ok(a, '결재함에 올라옴');
+  assert.equal(a.toolName, 'Bash');
+  tasks.decide(a.id, false, '배포는 내가 할게');
+  const res = await pending;
+  assert.equal(res.statusCode, 200);
+  const out = res.json().hookSpecificOutput;
+  assert.equal(out.hookEventName, 'PermissionRequest');
+  assert.equal(out.decision.behavior, 'deny');
+  assert.match(out.decision.message, /배포는 내가 할게/);
+
+  tasks.terminalMode = 'terminal';
+  const res2 = await hook(req);
+  assert.equal(res2.statusCode, 204, '꺼져 있으면 Paseo·터미널에서 물음');
+  assert.equal(tasks.pendingApprovals().length, 0);
 });
 
 test('/api/config는 기본 층과 층 목록을 준다', async () => {

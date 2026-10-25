@@ -19,6 +19,10 @@ function WorkerDetail({ w }: { w: Worker }) {
   const floorCfg = useOffice(s => s.floorsConfig.find(f => f.floor === w.floor));
   const events = useOffice(s => s.events);
   const selectWorker = useOffice(s => s.selectWorker);
+  const openPanel = useOffice(s => s.openPanel);
+  const openCommand = useOffice(s => s.openCommand);
+  // 마이오피스가 시킨 일을 하는 중인 직원이면 그 업무
+  const task = useOffice(s => (w.agentId ? undefined : s.tasks.find(t => t.sessionId === w.sessionId)));
   const mine = events.filter(e => e.sessionId === w.sessionId && (e.agentId ?? null) === (w.agentId ?? null)).slice(0, 20);
   return (
     <div className="sec detail">
@@ -37,7 +41,9 @@ function WorkerDetail({ w }: { w: Worker }) {
         <dt>출근</dt><dd>{hhmmss(w.startedAt)} ({since(w.startedAt)})</dd>
         <dt>도구 사용</dt><dd>{w.toolCount}회</dd>
         <dt>세션</dt><dd className="mono">{w.sessionId.slice(0, 8)}{w.agentId ? ` / ${w.agentId.slice(0, 8)}` : ''}</dd>
+        <dt>지시</dt><dd>{task ? <a onClick={() => openPanel({ taskId: task.id })}>📋 {task.title}</a> : 'Paseo·터미널에서 직접'}</dd>
       </dl>
+      <div className="actions"><button onClick={() => openCommand(w.teamId)}>📝 이 팀에 지시하기</button></div>
       <h4>최근 활동</h4>
       <ul className="log">{mine.map(e => <LogItem key={e.id} e={e} />)}</ul>
     </div>

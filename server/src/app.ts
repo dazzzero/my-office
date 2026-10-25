@@ -17,6 +17,8 @@ import { OfficeState } from './state.ts';
 import { TaskError, TaskManager } from './tasks.ts';
 
 const REPLAY_WINDOW = 12 * 60 * 60_000;
+/** Paseo·터미널 결재를 결재함에서 기다리는 시간. 넘으면 원래대로 그쪽에서 묻는다 (훅 timeout 300초보다 짧게) */
+export const TERMINAL_WAIT_MS = 280_000;
 
 export interface AppOptions {
   config: MyOfficeConfig;
@@ -74,7 +76,7 @@ export async function buildApp(o: AppOptions) {
       workQueued = true;
       setImmediate(() => {
         workQueued = false;
-        if (!closing) broadcast({ type: 'work', tasks: tasks.list(), approvals: tasks.pendingApprovals() });
+        if (!closing) broadcast({ type: 'work', tasks: tasks.list(), approvals: tasks.pendingApprovals(), terminalMode: tasks.terminalMode });
       });
     },
   });
@@ -104,6 +106,20 @@ export async function buildApp(o: AppOptions) {
     const { changed, removed } = office.apply(event);
     broadcast({ type: 'event', event, changed, removed, floors: office.floorSummaries() });
     onEvent?.(event);
+
+    // 토글을 켰으면 Paseo·터미널 세션의 권한 요청을 결재함에서 받는다 (마이오피스가 시킨 일은 이미 결재함으로 옴)
+    if (norm.kind === 'permission.request' && tasks.terminalMode === 'office' && !isDemoSession(p.session_id) && !tasks.isOfficeSession(p.session_id)) {
+      const d = await tasks.waitTerminalApproval(
+        { sessionId: p.session_id, toolName: p.tool_name ?? '', input: p.tool_input ?? {}, reason: null },
+        TERMINAL_WAIT_MS,
+      );
+      if (d) {
+        const decision = d.approve
+          ? { behavior: 'allow' }
+          : { behavior: 'deny', message: `대표가 마이오피스 결재함에서 반려했습니다.${d.note ? ` 사유: ${d.note}` : ''}` };
+        return reply.code(200).send({ hookSpecificOutput: { hookEventName: 'PermissionRequest', decision } });
+      }
+    }
     // 빈 2xx = "아무 결정도 하지 않음". Claude Code는 평소대로 진행한다
     return reply.code(204).send();
   });
@@ -128,7 +144,14 @@ export async function buildApp(o: AppOptions) {
 
   // ───────── 업무 · 결재 ─────────
 
-  app.get('/api/work', async () => ({ tasks: tasks.list(), approvals: tasks.pendingApprovals() }));
+  app.get('/api/work', async () => ({ tasks: tasks.list(), approvals: tasks.pendingApprovals(), terminalMode: tasks.terminalMode }));
+
+  app.post<{ Body: { terminalMode: string } }>('/api/settings', async req => {
+    const mode = req.body?.terminalMode;
+    if (mode !== 'terminal' && mode !== 'office') throw new TaskError('terminalMode는 terminal 또는 office');
+    tasks.terminalMode = mode;
+    return { terminalMode: tasks.terminalMode };
+  });
 
   app.get<{ Params: { teamId: string } }>('/api/teams/:teamId/agents', async req => {
     const team = config.floors.flatMap(f => f.teams).find(t => t.id === req.params.teamId);
@@ -171,7 +194,7 @@ export async function buildApp(o: AppOptions) {
     socket.on('close', () => clients.delete(socket));
     const snapshot: ServerMessage = {
       type: 'snapshot', workers: office.list(), floors: office.floorSummaries(), recent: store.recentEvents(50),
-      tasks: tasks.list(), approvals: tasks.pendingApprovals(),
+      tasks: tasks.list(), approvals: tasks.pendingApprovals(), terminalMode: tasks.terminalMode,
     };
     socket.send(JSON.stringify(snapshot));
   });

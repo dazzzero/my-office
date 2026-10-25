@@ -25,6 +25,24 @@ test('여러 규칙에 걸리면 deny가 우선', () => {
   assert.equal(r?.rule.id, 'db-write');
 });
 
+test('실제 명령일 때만 걸리고, 글자로만 들어 있으면 통과 (오탐 방지)', () => {
+  assert.equal(decide(config, bash('cd repo && git push'))?.action, 'ask');
+  assert.equal(decide(config, bash('git -C C:/repo push origin main'))?.action, 'ask');
+  assert.equal(decide(config, bash('npm test; rm -rf dist'))?.action, 'ask');
+  assert.equal(decide(config, { ...inShop, tool_name: 'PowerShell', tool_input: { command: 'Set-Location x; Remove-Item .\\out -Recurse' } })?.action, 'ask');
+  // 스크립트 파일을 쓰는데 내용에 그 글자가 들어 있는 경우
+  assert.equal(decide(config, bash(`cat > t.mjs <<'EOF'\nawait post({ text: 'git push --dry-run 해봐' })\nEOF`)), null);
+  assert.equal(decide(config, bash('echo "rm -rf 는 위험해요"')), null);
+  assert.equal(decide(config, bash(`node -e "const d = '폴더째 삭제 (Remove-Item -Recurse 등)'"`)), null);
+});
+
+test('결재 창 문구: 무엇이 왜 걸렸는지 한국어로', () => {
+  const ask = hookOutput(decide(config, bash('npm run build && git push origin main'))).hookSpecificOutput.permissionDecisionReason;
+  assert.match(ask, /^\[마이오피스 결재\] 원격 저장소로 push하는 명령이 들어 있어요: ".*git push origin main.*" — 실행해도 되면 승인/);
+  const deny = hookOutput(decide(config, bash(`py -c "import pymysql; cur.execute('DELETE FROM t')"`))).hookSpecificOutput.permissionDecisionReason;
+  assert.match(deny, /^\[마이오피스 차단\] DB 직접 쓰기/);
+});
+
 test('등록되지 않은 폴더, 다른 도구, 평범한 명령은 그냥 통과', () => {
   assert.equal(decide(config, { cwd: 'C:\\Users\\me\\Desktop', tool_name: 'Bash', tool_input: { command: 'git push' } }), null);
   assert.equal(decide(config, { ...inShop, tool_name: 'Read', tool_input: { file_path: 'a' } }), null);

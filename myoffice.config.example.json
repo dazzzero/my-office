@@ -118,25 +118,25 @@
   "guard": [
     {
       "id": "git-push",
-      "description": "원격 저장소로 push",
+      "description": "원격 저장소로 push하는",
       "tools": [
         "Bash",
         "PowerShell"
       ],
       "allOf": [
-        "\\bgit\\s+push\\b"
+        "(^|[;&|\\n])\\s*git(\\s+-C\\s+\\S+)?\\s+push\\b"
       ],
       "action": "ask"
     },
     {
       "id": "recursive-delete",
-      "description": "폴더째 삭제 (rm -rf, Remove-Item -Recurse 등)",
+      "description": "폴더째 삭제하는",
       "tools": [
         "Bash",
         "PowerShell"
       ],
       "allOf": [
-        "\\brm\\s+-[a-zA-Z]*[rR][a-zA-Z]*\\b|\\bRemove-Item\\b[^\\n]*-Recurse|\\brmdir\\s+/s|\\brd\\s+/s"
+        "(^|[;&|\\n])\\s*(sudo\\s+)?rm\\s+-[a-zA-Z]*[rR][a-zA-Z]*\\b|(^|[;&|{\\n])\\s*Remove-Item\\b[^\\n;|]*-Recurse|(^|[;&|\\n])\\s*(rmdir|rd)\\s+/s"
       ],
       "action": "ask"
     },

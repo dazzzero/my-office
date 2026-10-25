@@ -36,7 +36,10 @@ export interface Task {
   live: boolean;
 }
 
-export type ApprovalKind = 'plan' | 'tool';
+/** plan: 계획 결재, tool: 마이오피스가 시킨 일의 작업 결재, terminal: Paseo·터미널 세션의 권한 요청 (토글을 켰을 때) */
+export type ApprovalKind = 'plan' | 'tool' | 'terminal';
+/** Paseo·터미널 세션의 결재를 어디서 받을지 */
+export type TerminalApprovalMode = 'terminal' | 'office';
 export type ApprovalStatus = 'pending' | 'approved' | 'rejected' | 'cancelled';
 
 export interface Approval {

@@ -97,7 +97,8 @@ export function ourHookGroups(token) {
   const url = `${serverUrl()}/hook`;
   const groups = Object.fromEntries(EVENTS.map(([event, matcher]) => [event, [{
     ...(matcher ? { matcher } : {}),
-    hooks: [{ type: 'http', url, timeout: 3, headers: { [MARK_HEADER]: token } }],
+    // 권한 요청은 결재함에서 받기로 했을 때 대표의 결정을 기다려야 하므로 길게 (평소엔 서버가 바로 답함)
+    hooks: [{ type: 'http', url, timeout: event === 'PermissionRequest' ? 300 : 3, headers: { [MARK_HEADER]: token } }],
   }]]));
   const guard = join(ROOT, 'hooks', 'guard.mjs').replace(/\\/g, '/');
   groups.PreToolUse.push({

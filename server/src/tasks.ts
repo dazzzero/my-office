@@ -2,7 +2,7 @@
 // 실행 중 금지 목록·자동 모드 판단으로 결재가 필요하면 결재함으로 올린다.
 import type { DatabaseSync } from 'node:sqlite';
 import type { MyOfficeConfig, TeamConfig } from '../../shared/src/config.ts';
-import { ACTIVE_STATUSES, type Approval, type Task, type TaskLogEntry, type TaskSource, type TaskStatus } from '../../shared/src/tasks.ts';
+import { ACTIVE_STATUSES, type Approval, type Task, type TaskLogEntry, type TaskSource, type TaskStatus, type TerminalApprovalMode } from '../../shared/src/tasks.ts';
 import { listAgents } from './agents.ts';
 import { toolSummary } from './normalize.ts';
 import { ClaudeProcess, resolveClaude, type PermissionResult, type Spawner } from './runner.ts';
@@ -80,6 +80,12 @@ interface PendingApproval {
   input: Record<string, unknown>;
 }
 
+/** Paseo·터미널 세션의 권한 요청을 결재함에서 받을 때 */
+export interface TerminalDecision {
+  approve: boolean;
+  note: string;
+}
+
 export class TaskManager {
   private readonly db: DatabaseSync;
   private readonly config: MyOfficeConfig;
@@ -90,6 +96,7 @@ export class TaskManager {
   private readonly agentsOf: (teamPath: string) => { name: string }[];
   private live = new Map<number, Live>();
   private pending = new Map<number, PendingApproval>();
+  private terminalPending = new Map<number, (d: TerminalDecision | null) => void>();
 
   constructor(o: TaskManagerOptions) {
     this.db = o.db;
@@ -212,10 +219,56 @@ export class TaskManager {
 
   // ───────── 결재 ─────────
 
+  get terminalMode(): TerminalApprovalMode {
+    const r = this.db.prepare("SELECT value FROM meta WHERE key = 'terminal_approvals'").get() as Row | undefined;
+    return r?.value === 'office' ? 'office' : 'terminal';
+  }
+
+  set terminalMode(mode: TerminalApprovalMode) {
+    this.db.prepare("INSERT OR REPLACE INTO meta (key, value) VALUES ('terminal_approvals', ?)").run(mode);
+    this.onChange();
+  }
+
+  /** 마이오피스가 띄운 Claude의 세션인지 (그쪽 결재는 이미 결재함으로 온다) */
+  isOfficeSession(sessionId: string): boolean {
+    return [...this.live.keys()].some(id => this.get(id).sessionId === sessionId);
+  }
+
+  /**
+   * Paseo·터미널 세션의 권한 요청을 결재함에 올리고 결정을 기다린다.
+   * 시간 안에 결정이 없으면 null → 훅은 빈 응답을 돌려줘서 원래대로 Paseo·터미널에서 묻게 된다.
+   */
+  waitTerminalApproval(req: { sessionId: string; toolName: string; input: Record<string, unknown>; reason: string | null }, timeoutMs: number): Promise<TerminalDecision | null> {
+    const { lastInsertRowid } = this.db
+      .prepare(`INSERT INTO approvals (task_id, kind, session_id, tool_name, input, reason, status, created_at)
+                VALUES (NULL, 'terminal', ?, ?, ?, ?, 'pending', ?)`)
+      .run(req.sessionId, req.toolName, JSON.stringify(req.input ?? {}), req.reason, this.now());
+    const id = Number(lastInsertRowid);
+    this.onChange();
+    return new Promise(resolve => {
+      const timer = setTimeout(() => {
+        if (!this.terminalPending.delete(id)) return;
+        this.db.prepare("UPDATE approvals SET status = 'cancelled', note = ?, decided_at = ? WHERE id = ?").run('시간 초과 — Paseo·터미널로 넘김', this.now(), id);
+        this.onChange();
+        resolve(null);
+      }, timeoutMs);
+      timer.unref?.();
+      this.terminalPending.set(id, d => { clearTimeout(timer); resolve(d); });
+    });
+  }
+
   decide(approvalId: number, approve: boolean, note = ''): Approval {
-    const p = this.pending.get(approvalId);
     const row = this.db.prepare('SELECT * FROM approvals WHERE id = ?').get(approvalId) as Row | undefined;
     if (!row) throw new TaskError('없는 결재입니다');
+    const terminal = this.terminalPending.get(approvalId);
+    if (terminal && row.status === 'pending') {
+      this.terminalPending.delete(approvalId);
+      this.db.prepare('UPDATE approvals SET status = ?, note = ?, decided_at = ? WHERE id = ?').run(approve ? 'approved' : 'rejected', note || null, this.now(), approvalId);
+      terminal({ approve, note });
+      this.onChange();
+      return toApproval(this.db.prepare('SELECT * FROM approvals WHERE id = ?').get(approvalId) as Row);
+    }
+    const p = this.pending.get(approvalId);
     if (!p || row.status !== 'pending') throw new TaskError('이미 처리됐거나 취소된 결재입니다');
     const l = this.live.get(p.taskId);
     if (!l) throw new TaskError('이 업무의 Claude가 이미 종료됐습니다');
@@ -243,6 +296,9 @@ export class TaskManager {
   /** 서버 종료 시 */
   shutdown(): void {
     for (const l of this.live.values()) { l.stopping = true; l.proc.kill(); }
+    // 기다리던 Paseo·터미널 결재는 원래대로 그쪽에서 묻게 돌려준다
+    for (const resolve of this.terminalPending.values()) resolve(null);
+    this.terminalPending.clear();
   }
 
   // ───────── 내부 ─────────
