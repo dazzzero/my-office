@@ -12,9 +12,21 @@
       "id": "shop",
       "name": "쇼핑몰",
       "teams": [
-        { "id": "shop-fe", "name": "프론트엔드팀", "path": "C:\\work\\shop\\frontend" },
-        { "id": "shop-be", "name": "백엔드팀", "path": "C:\\work\\shop\\backend" },
-        { "id": "shop-doc", "name": "문서팀", "path": "C:\\work\\shop\\docs" }
+        {
+          "id": "shop-fe",
+          "name": "프론트엔드팀",
+          "path": "C:\\work\\shop\\frontend"
+        },
+        {
+          "id": "shop-be",
+          "name": "백엔드팀",
+          "path": "C:\\work\\shop\\backend"
+        },
+        {
+          "id": "shop-doc",
+          "name": "문서팀",
+          "path": "C:\\work\\shop\\docs"
+        }
       ]
     },
     {
@@ -23,8 +35,16 @@
       "id": "erp",
       "name": "사내 ERP",
       "teams": [
-        { "id": "erp-fe", "name": "프론트엔드팀", "path": "C:\\work\\erp\\frontend" },
-        { "id": "erp-be", "name": "백엔드팀", "path": "C:\\work\\erp\\backend" }
+        {
+          "id": "erp-fe",
+          "name": "프론트엔드팀",
+          "path": "C:\\work\\erp\\frontend"
+        },
+        {
+          "id": "erp-be",
+          "name": "백엔드팀",
+          "path": "C:\\work\\erp\\backend"
+        }
       ]
     },
     {
@@ -33,9 +53,21 @@
       "id": "blog",
       "name": "블로그",
       "teams": [
-        { "id": "blog-fe", "name": "프론트엔드팀", "path": "C:\\work\\blog\\web" },
-        { "id": "blog-be", "name": "백엔드팀", "path": "C:\\work\\blog\\server" },
-        { "id": "blog-api", "name": "API팀", "path": "C:\\work\\blog\\api" }
+        {
+          "id": "blog-fe",
+          "name": "프론트엔드팀",
+          "path": "C:\\work\\blog\\web"
+        },
+        {
+          "id": "blog-be",
+          "name": "백엔드팀",
+          "path": "C:\\work\\blog\\server"
+        },
+        {
+          "id": "blog-api",
+          "name": "API팀",
+          "path": "C:\\work\\blog\\api"
+        }
       ]
     },
     {
@@ -44,8 +76,16 @@
       "id": "shop2",
       "name": "쇼핑몰 v2",
       "teams": [
-        { "id": "shop2-fe", "name": "프론트엔드팀", "path": "C:\\work\\shop-v2\\frontend" },
-        { "id": "shop2-be", "name": "백엔드팀", "path": "C:\\work\\shop-v2\\backend" }
+        {
+          "id": "shop2-fe",
+          "name": "프론트엔드팀",
+          "path": "C:\\work\\shop-v2\\frontend"
+        },
+        {
+          "id": "shop2-be",
+          "name": "백엔드팀",
+          "path": "C:\\work\\shop-v2\\backend"
+        }
       ]
     },
     {
@@ -54,7 +94,11 @@
       "id": "lab",
       "name": "연구소",
       "teams": [
-        { "id": "lab", "name": "개발팀", "path": "D:\\projects\\lab" }
+        {
+          "id": "lab",
+          "name": "개발팀",
+          "path": "D:\\projects\\lab"
+        }
       ]
     },
     {
@@ -63,7 +107,11 @@
       "id": "myoffice",
       "name": "마이오피스 본사",
       "teams": [
-        { "id": "myoffice", "name": "본사", "path": "C:\\dev\\my-office" }
+        {
+          "id": "myoffice",
+          "name": "본사",
+          "path": "C:\\dev\\my-office"
+        }
       ]
     }
   ],
@@ -71,21 +119,34 @@
     {
       "id": "git-push",
       "description": "원격 저장소로 push",
-      "tools": ["Bash", "PowerShell"],
-      "allOf": ["\\bgit\\s+push\\b"],
+      "tools": [
+        "Bash",
+        "PowerShell"
+      ],
+      "allOf": [
+        "\\bgit\\s+push\\b"
+      ],
       "action": "ask"
     },
     {
       "id": "recursive-delete",
       "description": "폴더째 삭제 (rm -rf, Remove-Item -Recurse 등)",
-      "tools": ["Bash", "PowerShell"],
-      "allOf": ["\\brm\\s+-[a-zA-Z]*[rR][a-zA-Z]*\\b|\\bRemove-Item\\b[^\\n]*-Recurse|\\brmdir\\s+/s|\\brd\\s+/s"],
+      "tools": [
+        "Bash",
+        "PowerShell"
+      ],
+      "allOf": [
+        "\\brm\\s+-[a-zA-Z]*[rR][a-zA-Z]*\\b|\\bRemove-Item\\b[^\\n]*-Recurse|\\brmdir\\s+/s|\\brd\\s+/s"
+      ],
       "action": "ask"
     },
     {
       "id": "db-write",
       "description": "DB 직접 쓰기 (DB 드라이버 + 쓰기 SQL/commit이 한 명령에 같이 있으면)",
-      "tools": ["Bash", "PowerShell"],
+      "tools": [
+        "Bash",
+        "PowerShell"
+      ],
       "allOf": [
         "pymysql|mysql\\.connector|mariadb\\.connect|psycopg2|sqlalchemy|\\bmysql\\b\\s+-|\\bmysqlsh\\b|\\bmariadb\\b\\s+-",
         "\\b(INSERT\\s+INTO|UPDATE\\s+\\w+\\s+SET|DELETE\\s+FROM|REPLACE\\s+INTO|CREATE\\s+(TABLE|INDEX|DATABASE)|ALTER\\s+TABLE|DROP\\s+(TABLE|DATABASE|INDEX)|TRUNCATE\\s+(TABLE\\s+)?\\w+)\\b|\\.commit\\s*\\("
@@ -95,8 +156,13 @@
     {
       "id": "db-dsn-bypass",
       "description": "조회 전용 스크립트에서 접속정보만 빼내는 우회",
-      "tools": ["Bash", "PowerShell"],
-      "allOf": ["load_dsn|exec_module\\s*\\(.*sql"],
+      "tools": [
+        "Bash",
+        "PowerShell"
+      ],
+      "allOf": [
+        "load_dsn|exec_module\\s*\\(.*sql"
+      ],
       "action": "deny"
     }
   ],
@@ -117,6 +183,11 @@
       ]
     }
   ],
+  "runner": {
+    "maxConcurrent": 10,
+    "model": "claude-opus-5-5",
+    "idleMinutes": 15
+  },
   "notifications": {
     "windows": {
       "enabled": true,

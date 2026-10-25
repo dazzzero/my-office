@@ -48,7 +48,8 @@ export function serverUrl() {
 }
 
 export function readSettings() {
-  const raw = existsSync(SETTINGS) ? readFileSync(SETTINGS, 'utf8') : '{}';
+  // 일부 편집기는 파일 맨 앞에 BOM을 붙인다 → 떼고 읽는다
+  const raw = (existsSync(SETTINGS) ? readFileSync(SETTINGS, 'utf8') : '{}').replace(/^﻿/, '');
   const indent = raw.match(/\n( +)"/)?.[1] ?? '  ';
   return { raw, indent, settings: JSON.parse(raw) };
 }
@@ -66,7 +67,12 @@ export function backupSettings() {
   return to;
 }
 
-const isOurs = handler => handler?.type === 'http' && handler.headers && MARK_HEADER in handler.headers;
+/** 금지 목록 검사 훅(command)에 붙이는 표시. 제거할 때 이걸로 찾는다 */
+export const GUARD_MARK = 'myoffice-guard';
+
+const isOurs = handler =>
+  (handler?.type === 'http' && handler.headers && MARK_HEADER in handler.headers) ||
+  (handler?.type === 'command' && String(handler.command).includes(GUARD_MARK));
 
 export function countOurs(settings) {
   return Object.values(settings.hooks ?? {}).flat().flatMap(g => g.hooks ?? []).filter(isOurs).length;
@@ -86,10 +92,17 @@ export function stripOurs(settings) {
   return settings;
 }
 
+/** 관전용 http 훅(이벤트 → 서버) + 금지 목록 검사 command 훅(서버 없이 동작) */
 export function ourHookGroups(token) {
   const url = `${serverUrl()}/hook`;
-  return Object.fromEntries(EVENTS.map(([event, matcher]) => [event, {
+  const groups = Object.fromEntries(EVENTS.map(([event, matcher]) => [event, [{
     ...(matcher ? { matcher } : {}),
     hooks: [{ type: 'http', url, timeout: 3, headers: { [MARK_HEADER]: token } }],
-  }]));
+  }]]));
+  const guard = join(ROOT, 'hooks', 'guard.mjs').replace(/\\/g, '/');
+  groups.PreToolUse.push({
+    matcher: 'Bash|PowerShell',
+    hooks: [{ type: 'command', command: `node "${guard}" # ${GUARD_MARK}`, timeout: 10 }],
+  });
+  return groups;
 }

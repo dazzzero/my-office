@@ -33,7 +33,7 @@ if (args.has('--dry-run')) {
 const backup = backupSettings();
 stripOurs(file.settings);
 file.settings.hooks ??= {};
-for (const [event, group] of Object.entries(groups)) (file.settings.hooks[event] ??= []).push(group);
+for (const [event, list] of Object.entries(groups)) (file.settings.hooks[event] ??= []).push(...list);
 writeSettings(file);
 
 console.log(`✅ 마이오피스 훅 ${countOurs(file.settings)}개 설치 완료`);

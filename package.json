@@ -13,7 +13,7 @@
   "scripts": {
     "server": "node --disable-warning=ExperimentalWarning server/src/index.ts",
     "dev": "node --watch --disable-warning=ExperimentalWarning server/src/index.ts",
-    "test": "node --disable-warning=ExperimentalWarning --test \"server/test/*.test.ts\" \"web/test/*.test.ts\"",
+    "test": "node --disable-warning=ExperimentalWarning --test \"server/test/*.test.ts\" \"web/test/*.test.ts\" \"hooks/test/*.test.mjs\"",
     "typecheck": "tsc -p server && tsc -p web",
     "build": "cd web && vite build",
     "hooks:status": "node hooks/install.mjs --status",

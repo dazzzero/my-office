@@ -1,4 +1,5 @@
 // 훅 이벤트를 사무실 이벤트로 정규화한 형태와, 화면이 그리는 직원 상태.
+import type { Approval, Task } from './tasks.ts';
 
 export type EventKind =
   | 'session.start'
@@ -73,6 +74,7 @@ export interface FloorSummary {
 
 /** 서버 → 웹 WebSocket 메시지 */
 export type ServerMessage =
-  | { type: 'snapshot'; workers: Worker[]; floors: FloorSummary[]; recent: OfficeEvent[] }
+  | { type: 'snapshot'; workers: Worker[]; floors: FloorSummary[]; recent: OfficeEvent[]; tasks: Task[]; approvals: Approval[] }
+  | { type: 'work'; tasks: Task[]; approvals: Approval[] }
   | { type: 'event'; event: OfficeEvent; changed: Worker[]; removed: string[]; floors: FloorSummary[] }
   | { type: 'tick'; changed: Worker[]; removed: string[]; floors: FloorSummary[] };

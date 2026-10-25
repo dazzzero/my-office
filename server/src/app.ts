@@ -5,10 +5,16 @@ import Fastify from 'fastify';
 import type { WebSocket } from 'ws';
 import type { MyOfficeConfig } from '../../shared/src/config.ts';
 import type { OfficeEvent, ServerMessage } from '../../shared/src/events.ts';
-import { createTeamMatcher } from './config.ts';
+import type { Approval, Task, TaskSource } from '../../shared/src/tasks.ts';
+import { listAgents } from './agents.ts';
+import { ROOT, createTeamMatcher } from './config.ts';
 import type { Store } from './db.ts';
 import { normalize, shrink, type HookPayload } from './normalize.ts';
+import type { Spawner } from './runner.ts';
+import { askSecretary, type SecretaryAnswer } from './secretary.ts';
+import { createSecurity, type Security } from './security.ts';
 import { OfficeState } from './state.ts';
+import { TaskError, TaskManager } from './tasks.ts';
 
 const REPLAY_WINDOW = 12 * 60 * 60_000;
 
@@ -19,16 +25,29 @@ export interface AppOptions {
   now?: () => number;
   /** 이벤트가 저장될 때마다 호출 (서버 로그용) */
   onEvent?: (e: OfficeEvent) => void;
+  /** 결재가 새로 필요할 때 (윈도우 알림) */
+  onApproval?: (a: Approval, t: Task) => void;
   /** 빌드된 화면(web/dist). 있으면 / 에서 서빙 */
   webRoot?: string;
+  security?: Security;
+  /** 테스트용: 진짜 claude.exe 대신 가짜 프로세스 */
+  spawner?: Spawner;
+  agentsOf?: (teamPath: string) => { name: string; description: string }[];
+  secretary?: (text: string) => Promise<SecretaryAnswer>;
 }
 
 /** `npm run demo`가 보내는 가짜 세션. 화면에는 보이지만 DB에는 남기지 않는다 */
 export const isDemoSession = (sessionId: string) => sessionId.startsWith('demo-');
 
-export async function buildApp({ config, store, token, now = Date.now, onEvent, webRoot }: AppOptions) {
+export async function buildApp(o: AppOptions) {
+  const { config, store, token, now = Date.now, onEvent, webRoot } = o;
+  const security = o.security ?? createSecurity();
+  const agentsOf = o.agentsOf ?? ((p: string) => listAgents(p));
+  const secretary = o.secretary ?? ((text: string) => askSecretary(config, agentsOf, text, ROOT));
+
   // Read 결과처럼 큰 페이로드도 받아야 한다. 거절하면 그 이벤트를 잃는다.
   const app = Fastify({ bodyLimit: 64 * 1024 * 1024 });
+  app.addHook('onRequest', security.check);
   await app.register(websocket);
   if (webRoot && existsSync(webRoot)) await app.register(fastifyStatic, { root: webRoot });
   let demoId = 0;
@@ -43,6 +62,27 @@ export async function buildApp({ config, store, token, now = Date.now, onEvent, 
     const data = JSON.stringify(msg);
     for (const ws of clients) ws.send(data);
   };
+
+  // 업무·결재가 바뀌면 화면에 보낸다 (한 번에 여러 번 바뀌어도 한 번만)
+  let workQueued = false;
+  let closing = false;
+  const tasks: TaskManager = new TaskManager({
+    db: store.db, config, now, spawner: o.spawner, agentsOf,
+    onApproval: o.onApproval,
+    onChange: () => {
+      if (workQueued || closing) return;
+      workQueued = true;
+      setImmediate(() => {
+        workQueued = false;
+        if (!closing) broadcast({ type: 'work', tasks: tasks.list(), approvals: tasks.pendingApprovals() });
+      });
+    },
+  });
+
+  app.setErrorHandler((err: Error & { statusCode?: number }, _req, reply) => {
+    if (err instanceof TaskError) return reply.code(400).send({ error: err.message });
+    reply.code(err.statusCode ?? 500).send({ error: err.message });
+  });
 
   app.post('/hook', async (req, reply) => {
     if (req.headers['x-myoffice-token'] !== token) return reply.code(401).send();
@@ -68,11 +108,15 @@ export async function buildApp({ config, store, token, now = Date.now, onEvent, 
     return reply.code(204).send();
   });
 
-  app.get('/health', async () => ({ ok: true, events: store.countEvents(), workers: office.workers.size }));
+  app.get('/health', async () => ({ ok: true, events: store.countEvents(), workers: office.workers.size, running: tasks.running }));
+
+  /** 화면이 처음 열릴 때 키를 받아 간다. 다른 사이트는 이 응답을 읽을 수 없다 */
+  app.get('/api/session', async () => ({ key: security.uiKey }));
 
   app.get('/api/config', async () => ({
     defaultFloor: config.defaultFloor,
     floors: config.floors,
+    maxConcurrent: config.runner.maxConcurrent,
   }));
 
   app.get('/api/state', async () => ({ workers: office.list(), floors: office.floorSummaries() }));
@@ -82,10 +126,53 @@ export async function buildApp({ config, store, token, now = Date.now, onEvent, 
     return store.recentEvents(limit, req.query.floor ? Number(req.query.floor) : undefined);
   });
 
+  // ───────── 업무 · 결재 ─────────
+
+  app.get('/api/work', async () => ({ tasks: tasks.list(), approvals: tasks.pendingApprovals() }));
+
+  app.get<{ Params: { teamId: string } }>('/api/teams/:teamId/agents', async req => {
+    const team = config.floors.flatMap(f => f.teams).find(t => t.id === req.params.teamId);
+    if (!team) throw new TaskError('없는 팀입니다');
+    return agentsOf(team.path);
+  });
+
+  app.post<{ Body: { instruction: string; teamId: string; agent?: string | null; title?: string; source?: TaskSource; draft?: boolean } }>(
+    '/api/tasks', async req => tasks.create(req.body ?? ({} as never)));
+
+  app.get<{ Params: { id: string } }>('/api/tasks/:id/log', async req => tasks.log(Number(req.params.id)));
+
+  app.post<{ Params: { id: string }; Body: { teamId?: string; agent?: string | null; instruction?: string; title?: string } }>(
+    '/api/tasks/:id/start', async req => tasks.start(Number(req.params.id), req.body ?? {}));
+
+  app.post<{ Params: { id: string }; Body: { text: string } }>(
+    '/api/tasks/:id/message', async req => tasks.message(Number(req.params.id), req.body?.text ?? ''));
+
+  app.post<{ Params: { id: string } }>('/api/tasks/:id/stop', async req => tasks.stop(Number(req.params.id)));
+
+  app.post<{ Params: { id: string } }>('/api/tasks/:id/archive', async req => {
+    tasks.archive(Number(req.params.id));
+    return { ok: true };
+  });
+
+  app.post<{ Params: { id: string }; Body: { approve: boolean; note?: string } }>(
+    '/api/approvals/:id', async req => tasks.decide(Number(req.params.id), Boolean(req.body?.approve), req.body?.note ?? ''));
+
+  /** 대표실 채팅: 비서가 업무 초안을 만든다 (초안은 대표가 확인 후 보냄) */
+  app.post<{ Body: { text: string } }>('/api/secretary', async req => {
+    const text = req.body?.text?.trim();
+    if (!text) throw new TaskError('말씀이 비어 있습니다');
+    const answer = await secretary(text);
+    const drafts = answer.drafts.map(d => tasks.create({ ...d, source: 'secretary', draft: true }));
+    return { reply: answer.reply, drafts };
+  });
+
   app.get('/ws', { websocket: true }, socket => {
     clients.add(socket);
     socket.on('close', () => clients.delete(socket));
-    const snapshot: ServerMessage = { type: 'snapshot', workers: office.list(), floors: office.floorSummaries(), recent: store.recentEvents(50) };
+    const snapshot: ServerMessage = {
+      type: 'snapshot', workers: office.list(), floors: office.floorSummaries(), recent: store.recentEvents(50),
+      tasks: tasks.list(), approvals: tasks.pendingApprovals(),
+    };
     socket.send(JSON.stringify(snapshot));
   });
 
@@ -93,8 +180,12 @@ export async function buildApp({ config, store, token, now = Date.now, onEvent, 
     const { changed, removed } = office.tick(now());
     if (changed.length || removed.length) broadcast({ type: 'tick', changed, removed, floors: office.floorSummaries() });
   }, 30_000);
-  app.addHook('onClose', async () => clearInterval(timer));
+  app.addHook('onClose', async () => {
+    closing = true;
+    clearInterval(timer);
+    tasks.shutdown();
+  });
 
   // Fastify 인스턴스는 thenable이라 async 반환값으로 그대로 내보내면 타입이 풀린다 → 객체로 감싼다
-  return { app, office };
+  return { app, office, tasks, security };
 }

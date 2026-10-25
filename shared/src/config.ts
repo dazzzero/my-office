@@ -32,7 +32,19 @@ export interface MyOfficeConfig {
   guard: GuardRule[];
   /** 한 프로젝트의 규칙 파일을 다른 작업 공간에 복사 (npm run rules:sync) */
   rulesSync?: RulesSync[];
+  /** 마이오피스가 직접 시키는 일 */
+  runner: RunnerConfig;
   notifications: { windows: WindowsNotifyConfig; mobile: null | { provider: 'telegram' } };
+}
+
+export interface RunnerConfig {
+  /** 마이오피스가 동시에 띄우는 Claude 수 (Paseo 대화는 세지 않음) */
+  maxConcurrent: number;
+  model: string;
+  /** claude.exe 경로. 비우면 npm 전역 설치 위치에서 찾는다 */
+  claudePath?: string;
+  /** 일이 끝나고 이 시간(분) 동안 추가 지시가 없으면 프로세스를 닫는다 (이어서 지시하면 다시 연다) */
+  idleMinutes: number;
 }
 
 export interface RulesSync {

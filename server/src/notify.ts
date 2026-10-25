@@ -3,6 +3,7 @@
 import { spawn } from 'node:child_process';
 import type { MyOfficeConfig } from '../../shared/src/config.ts';
 import type { OfficeEvent } from '../../shared/src/events.ts';
+import type { Approval, Task } from '../../shared/src/tasks.ts';
 import { workerFullName } from '../../shared/src/identity.ts';
 
 const DEDUPE_MS = 60_000;
@@ -81,6 +82,22 @@ export class Notifier {
     if (e.kind === 'session.end') {
       this.cancelDone(e.sessionId);
       this.promptAt.delete(e.sessionId);
+    }
+  }
+
+  /** 마이오피스가 시킨 일에서 결재가 필요할 때 */
+  approval(a: Approval, t: Task): void {
+    const rules = this.config.notifications.windows;
+    if (!rules.enabled || !rules.waiting) return;
+    const floor = this.config.floors.find(f => f.floor === t.floor);
+    const where = `${floor?.label} ${floor?.name}`;
+    const url = `${this.baseUrl}/?floor=${t.floor}`;
+    if (a.kind === 'plan') {
+      this.once(`plan:${t.id}:${a.id}`, a.createdAt, { title: `📋 계획 결재 요청 · ${where}`, body: `${t.title} — 계획을 확인하고 승인해 주세요`, url });
+    } else {
+      // 훅으로 들어오는 "결재 대기" 알림과 같은 키 → 중복 알림 방지
+      const what = a.toolName ? `${a.toolName}${a.reason ? ` (${a.reason})` : ''}` : '작업';
+      this.once(`wait:${t.sessionId}:null`, a.createdAt, { title: `✋ 결재 요청 · ${where}`, body: `${t.title} — ${what}`, url });
     }
   }
 

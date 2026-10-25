@@ -17,6 +17,7 @@ const { app, office } = await buildApp({
   store,
   token: ensureToken(),
   webRoot: join(ROOT, 'web', 'dist'),
+  onApproval: (a, t) => notifier.approval(a, t),
   onEvent: e => {
     notifier.handle(e);
     if (e.id < 0) return; // 데모 이벤트는 로그에 남기지 않는다
