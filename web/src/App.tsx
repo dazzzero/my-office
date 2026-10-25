@@ -162,15 +162,17 @@ function DesktopApp() {
           )}
           <span className={`live${connected ? '' : ' off'}`}>{connected ? '● LIVE' : '○ 연결 중…'}</span>
           <div className="toolbar">
-            <button className={`inbox${approvals ? ' has' : ''}${panel === 'approvals' ? ' on' : ''}`} onClick={() => toggle('approvals')}>
-              📥 결재함{approvals > 0 && <span className="count">{approvals}</span>}
+            {/* 폭이 좁으면 글자는 숨기고 아이콘만 (마우스를 올리면 이름) */}
+            <button className={`inbox${approvals ? ' has' : ''}${panel === 'approvals' ? ' on' : ''}`} onClick={() => toggle('approvals')} title="결재함">
+              📥<span className="lbl">결재함</span>{approvals > 0 && <span className="count">{approvals}</span>}
             </button>
-            <button className={panel === 'command' ? 'on' : ''} onClick={() => (panel === 'command' ? openPanel(null) : openCommand(null))}>📝 지시하기</button>
-            <button className={panel === 'chat' ? 'on' : ''} onClick={() => toggle('chat')}>💬 대표실</button>
-            <button className={isMeeting(panel) ? 'on' : ''} onClick={() => toggle('meetings')}>
-              🗣️ 회의실{meetingsActive > 0 && <span className="count blue">{meetingsActive}</span>}
+            <button className={panel === 'command' ? 'on' : ''} onClick={() => (panel === 'command' ? openPanel(null) : openCommand(null))} title="지시하기">📝<span className="lbl">지시하기</span></button>
+            <button className={panel === 'chat' ? 'on' : ''} onClick={() => toggle('chat')} title="대표실 비서">💬<span className="lbl">대표실</span></button>
+            <button className={isMeeting(panel) ? 'on' : ''} onClick={() => toggle('meetings')} title="회의실">
+              🗣️<span className="lbl">회의실</span>{meetingsActive > 0 && <span className="count blue">{meetingsActive}</span>}
             </button>
-            <button className={kanban ? 'on' : ''} onClick={toggleKanban}>📋 칸반{active > 0 && <span className="count gray">{active}</span>}</button>
+            <button className={kanban ? 'on' : ''} onClick={toggleKanban} title="칸반">📋<span className="lbl">칸반</span>{active > 0 && <span className="count gray">{active}</span>}</button>
+            <button className={`narrow-only${panel === 'people' ? ' on' : ''}`} onClick={() => toggle('people')} title="사람·활동">👥</button>
             <button className={panel === 'phone' ? 'on' : ''} onClick={() => toggle('phone')} title={isRemote ? '알림·화면 설정' : '휴대폰 연결'}>📱</button>
           </div>
         </header>

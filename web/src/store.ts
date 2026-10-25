@@ -16,7 +16,10 @@ export type Panel = null | 'approvals' | 'command' | 'chat' | 'meetings' | 'phon
   | { taskId: number } | { meetingId: number };
 
 const POWER_KEY = 'myoffice-power-save';
-const mobileQuery = window.matchMedia('(max-width: 760px)');
+/** 휴대폰 배치: 폭이 좁거나, 높이가 낮을 때(휴대폰 가로) */
+const mobileQuery = window.matchMedia('(max-width: 900px), (max-height: 520px)');
+/** PC 배치인데 오른쪽 패널을 숨기는 폭 (styles.css와 맞출 것) */
+const narrowQuery = window.matchMedia('(max-width: 1150px)');
 
 interface OfficeStore {
   floorsConfig: FloorConfig[];
@@ -84,7 +87,8 @@ export const useOffice = create<OfficeStore>()(set => ({
   commandTeam: null,
   toast: null,
   selectFloor: floor => set({ selectedFloor: floor, selectedWorkerId: null }),
-  selectWorker: id => set({ selectedWorkerId: id }),
+  // 오른쪽 패널이 숨겨진 폭에선 직원을 누르면 상세를 창으로 연다 (휴대폰은 아래 시트)
+  selectWorker: id => set(s => ({ selectedWorkerId: id, ...(id && !s.mobile && narrowQuery.matches ? { panel: 'people' as const } : {}) })),
   finishDeparture: id => set(s => {
     const departing = { ...s.departing };
     delete departing[id];

@@ -259,6 +259,27 @@ input.note, .form input, .form select, .form textarea, .draft select, .follow-up
 .ok-line { color: #1f8a4c; font-size: 12.5px; align-self: center; }
 .phone .check { margin: 6px 0 !important; }
 
+/* PC 배치 반응형: 1400px 아래는 툴바 아이콘만, 1150px 아래는 오른쪽 패널 숨김 (👥 버튼·직원 누르면 창으로).
+   900px 아래 또는 높이 520px 아래(휴대폰 가로)는 휴대폰 배치 (store.ts의 mobileQuery) */
+header { min-width: 0; }
+.card { min-width: 0; white-space: nowrap; flex-shrink: 1; overflow: hidden; }
+.card em { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.live { white-space: nowrap; }
+.toolbar { flex-shrink: 0; }
+.toolbar button { white-space: nowrap; }
+.toolbar .lbl { margin-left: 5px; }
+.toolbar .narrow-only { display: none; }
+@media (max-width: 1400px) {
+  .toolbar .lbl { display: none; }
+  .toolbar button { padding: 6px 9px; gap: 3px; }
+  .card em { display: none; }
+}
+@media (max-width: 1150px) {
+  .app { grid-template-columns: 220px 1fr; }
+  .app > aside.right { display: none; }
+  .toolbar .narrow-only { display: flex; }
+}
+
 /* 앱 설치 띠 */
 .install-banner { display: flex; align-items: center; gap: 10px; padding: 8px 10px; background: #fff6ef; border-bottom: 1px solid #f3d0b4; }
 .install-banner img { border-radius: 8px; flex: none; }
@@ -291,10 +312,6 @@ input.note, .form input, .form select, .form textarea, .draft select, .follow-up
 .mpeople .row em { font-style: normal; color: var(--sub); font-size: 11.5px; }
 .mpeople .row .chip { margin: 0 0 0 auto; }
 .mpeople .what { font-size: 12.5px; color: #4b525d; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-@media (orientation: landscape) {
-  .mapp .view { flex: 1; height: auto; border: 0; }
-  .mpeople { display: none; }
-}
 .mtabs { display: grid; grid-template-columns: repeat(5, 1fr); background: #fff; border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom); }
 .mtabs button { border: 0; border-radius: 0; background: none; padding: 6px 0 7px; font-size: 11px; color: var(--sub); display: flex; flex-direction: column; align-items: center; gap: 1px; position: relative; }
 .mtabs button i { font-style: normal; font-size: 19px; line-height: 1.2; }
@@ -321,3 +338,19 @@ input.note, .form input, .form select, .form textarea, .draft select, .follow-up
 .mapp button, .mapp select, .mapp input, .mapp textarea { font-size: 15px; }
 .mapp .panel-body { padding: 12px; }
 .mapp .worker-tag .bubble { max-width: 150px; }
+
+/* 휴대폰 가로: 사람 목록은 숨기고 3D를 크게. 높이가 귀하니 탭을 오른쪽 세로줄로, 위 줄도 얇게 (휴대폰 규칙들보다 뒤에 둘 것) */
+@media (orientation: landscape) {
+  .mapp { display: grid; grid-template: "top top" auto "banner banner" auto "body tabs" 1fr / 1fr 64px; }
+  .mapp .view { flex: 1; height: auto; border: 0; }
+  .mpeople { display: none; }
+  .mtop { grid-area: top; padding: 4px 10px; padding-top: max(4px, env(safe-area-inset-top)); }
+  .mtop select { padding: 4px 8px; font-size: 14px; }
+  .mapp .install-banner { grid-area: banner; }
+  .mbody { grid-area: body; }
+  .mtabs { grid-area: tabs; grid-template-columns: 1fr; grid-auto-rows: 1fr; border-top: 0; border-left: 1px solid var(--line);
+    padding: 0 env(safe-area-inset-right) 0 0; }
+  .mtabs button { justify-content: center; font-size: 0; padding: 0; min-height: 0; } /* 아이콘만 (글자 크기 0) */
+  .mtabs button.on { box-shadow: inset 2px 0 0 var(--accent); }
+  .mtabs .count { left: 58%; }
+}
